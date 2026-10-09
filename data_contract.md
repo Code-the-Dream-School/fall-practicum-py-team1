@@ -105,9 +105,7 @@ The pipeline may add additional metadata such as city and ingestion time.
 | pm10        | float    | Yes      | OpenWeather list[].components.pm10  | Particulate matter (µg/m³)              |
 | nh3         | float    | Yes      | OpenWeather list[].components.nh3   | Ammonia (µg/m³)                         |
 | ingested_at | datetime | Yes*     | Pipeline                            | Time the pipeline received/stored record|
-|             |          |          |                                     | (Datetime)                              |
 |-------------|----------|----------|-------------------------------------|-----------------------------------------|
-                              |
 * These fields are not returned directly by OpenWeather; they would be added by our pipeline.
 
 4.2 Raw Data Rules
@@ -153,26 +151,26 @@ The pipeline flattens the nested fields and adds metadata. For illustration, thi
 The gold dataset is intended to contain cleaned/transformed data that is ready for downstream use by the application or analysis.
 
 5.1 Proposed Gold Schema
-|----------------|----------|----------|-----------------------------------------------------------|
-| Field          | Type     | Required | Unit / Description                                        |
-|----------------|----------|----------|-----------------------------------------------------------|
-| city           | string   | Yes*     | City associated with the coordinates/request              |
-| latitude       | float    | Yes      | Geographic latitude                                       |
-| longitude      | float    | Yes      | Geographic longitude                                      |
-| timestamp      | datetime | Yes      | Observation time after converting Unix timestamp(Datetime)|
-| aqi            | integer  | Yes      | OpenWeather Air Quality Index (1-5;unitless)              |
-| co             | float    | Yes      | Carbon monoxide (µg/m³)                                   |
-| no             | float    | Yes      | Nitric oxide (µg/m³)                                      |
-| no2            | float    | Yes      | Nitrogen dioxide (µg/m³)                                  |
-| o3             | float    | Yes      | Ozone (µg/m³)                                             |
-| so2            | float    | Yes      | Sulfur dioxide (µg/m³)                                    |
-| pm2_5          | float    | Yes      | Fine particulate matter (µg/m³)                           |
-| pm10           | float    | Yes      | Particulate matter (µg/m³)                                |
-| nh3            | float    | Yes      | Ammonia (µg/m³)                                           |
-| ingested_at    | datetime | Yes*     | Time the pipeline received/stored the record (Datetime)   |
-| transformed_at | datetime | Yes*     | Time the raw record was transformed into the gold dataset |
-|                |          |          | (Datetime)                                                |       
-|----------------|----------|----------|-----------------------------------------------------------|
+
+|-------------------------------------------------------------------------------------------------------|
+| Field          | Type     | Required | Unit / Description                                             |
+| -------------- | -------- | -------- | -------------------------------------------------------------- |
+| city           | string   | Yes*     | City associated with the coordinates/request                   |
+| latitude       | float    | Yes      | Geographic latitude                                            |
+| longitude      | float    | Yes      | Geographic longitude                                           |
+| timestamp      | datetime | Yes      | Observation time converted from Unix timestamp to UTC datetime |
+| aqi            | integer  | Yes      | OpenWeather Air Quality Index (1–5; unitless)                  |
+| co             | float    | Yes      | Carbon monoxide (µg/m³)                                        |
+| no             | float    | Yes      | Nitric oxide (µg/m³)                                           |
+| no2            | float    | Yes      | Nitrogen dioxide (µg/m³)                                       |
+| o3             | float    | Yes      | Ozone (µg/m³)                                                  |
+| so2            | float    | Yes      | Sulfur dioxide (µg/m³)                                         |
+| pm2_5          | float    | Yes      | Fine particulate matter (µg/m³)                                |
+| pm10           | float    | Yes      | Particulate matter (µg/m³)                                     |
+| nh3            | float    | Yes      | Ammonia (µg/m³)                                                |
+| ingested_at    | datetime | Yes*     | Time the pipeline received/stored the record                   |
+| transformed_at | datetime | Yes*     | Time the raw record was transformed into the Gold dataset      |
+|----------------|----------|----------|----------------------------------------------------------------|
 
 5.1 Proposed Gold record
 -------------------------
