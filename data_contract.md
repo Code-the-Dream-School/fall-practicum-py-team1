@@ -88,30 +88,31 @@ The pipeline may add additional metadata such as city and ingestion time.
 --------------------
 
 4.1 Proposed Raw Schema
-------------------------
-|-------------|----------|----------|-------------------------------------|--------------------------------------------------|
-| Field       | Type     | Required | Source                              | Description                                      |
-|-------------|----------|----------|-------------------------------------|--------------------------------------------------|
-| city        | string   | Yes*     | Pipeline                            | City associated with the coordinates/request     |
-| latitude    | float    | Yes      | OpenWeather coord.lat               | Geographic latitude                              |
-| longitude   | float    | Yes      | OpenWeather coord.lon               | Geographic longitude                             |
-| timestamp   | datetime | Yes      | OpenWeather list[].dt               | Observation time after converting Unix timestamp |
-| aqi         | integer  | Yes      | OpenWeather list[].main.aqi         | OpenWeather Air Quality Index                    |
-| co          | float    | Yes      | OpenWeather list[].components.co    | Carbon monoxide                                  |
-| no          | float    | Yes      | OpenWeather list[].components.no    | Nitric oxide                                     |
-| no2         | float    | Yes      | OpenWeather list[].components.no2   | Nitrogen dioxide                                 |
-| o3          | float    | Yes      | OpenWeather list[].components.o3    | Ozone                                            |
-| so2         | float    | Yes      | OpenWeather list[].components.so2   | Sulfur dioxide                                   |
-| pm2_5       | float    | Yes      | OpenWeather list[].components.pm2_5 | Fine particulate matter                          |
-| pm10        | float    | Yes      | OpenWeather list[].components.pm10  | Particulate matter                               |
-| nh3         | float    | Yes      | OpenWeather list[].components.nh3   | Ammonia                                          |
-| ingested_at | datetime | Yes*     | Pipeline                            | Time the pipeline received/stored the record     |
-|-------------|----------|----------|-------------------------------------|--------------------------------------------------|
-
+--------------------------------------------------------------------------------------------------------------------
+| Field       | Type     | Required | Source                              | Unit / Description                      |
+|-------------|----------|----------|-------------------------------------|-----------------------------------------|
+| city        | string   | Yes*     | Pipeline                            | City associated with the coordinates    |
+| latitude    | float    | Yes      | OpenWeather coord.lat               | Geographic latitude                     |
+| longitude   | float    | Yes      | OpenWeather coord.lon               | Geographic longitude                    |
+| timestamp   | datetime | Yes      | OpenWeather list[].dt               | Time after converting Unix timestamp    |
+| aqi         | integer  | Yes      | OpenWeather list[].main.aqi         | OpenWeather Air Quality (1-5;unitless)  |
+| co          | float    | Yes      | OpenWeather list[].components.co    | Carbon monoxide (µg/m³)                 |
+| no          | float    | Yes      | OpenWeather list[].components.no    | Nitric oxide (µg/m³)                    |
+| no2         | float    | Yes      | OpenWeather list[].components.no2   | Nitrogen dioxide (µg/m³)                |
+| o3          | float    | Yes      | OpenWeather list[].components.o3    | Ozone (µg/m³)                           |
+| so2         | float    | Yes      | OpenWeather list[].components.so2   | Sulfur dioxide (µg/m³)                  |
+| pm2_5       | float    | Yes      | OpenWeather list[].components.pm2_5 | Fine particulate matter (µg/m³)         |
+| pm10        | float    | Yes      | OpenWeather list[].components.pm10  | Particulate matter (µg/m³)              |
+| nh3         | float    | Yes      | OpenWeather list[].components.nh3   | Ammonia (µg/m³)                         |
+| ingested_at | datetime | Yes*     | Pipeline                            | Time the pipeline received/stored record|
+|             |          |          |                                     | (Datetime)                              |
+|-------------|----------|----------|-------------------------------------|-----------------------------------------|
+                              |
 * These fields are not returned directly by OpenWeather; they would be added by our pipeline.
 
 4.2 Raw Data Rules
 ------------------
+
 The following rules are proposed for review:
 city should be a non-empty string when included in the stored raw record.
 latitude should be between -90 and 90.
@@ -124,47 +125,99 @@ Missing pollutant values should remain missing rather than automatically being r
 Pollutant units should remain consistent with the units provided by OpenWeather and should be documented in the final version of the contract.
 ingested_at should represent when our pipeline processed or stored the record, rather than when OpenWeather generated the observation.
 
+4.3 Proposed Raw record
+-----------------------
+
+The pipeline flattens the nested fields and adds metadata. For illustration, this example uses "Sample City" as a placeholder because the API response doesn't contain a city name.
+
+{
+    "city": "Sample City",
+    "latitude": 50.0,
+    "longitude": 50.0,
+    "timestamp": "2026-10-06T...",
+    "aqi": 2,
+    "co": 139.58,
+    "no": 0.0,
+    "no2": 0.33,
+    "o3": 91.18,
+    "so2": 2.13,
+    "pm2_5": 17.33,
+    "pm10": 39.01,
+    "nh3": 0.0,
+    "ingested_at": "2026-10-08T..."
+}
 
 5. Gold Data Contract
+----------------------
+
 The gold dataset is intended to contain cleaned/transformed data that is ready for downstream use by the application or analysis.
+
 5.1 Proposed Gold Schema
--------------------------
 |----------------|----------|----------|-----------------------------------------------------------|
-| Field          | Type     | Required | Description                                               |
+| Field          | Type     | Required | Unit / Description                                        |
 |----------------|----------|----------|-----------------------------------------------------------|
 | city           | string   | Yes*     | City associated with the coordinates/request              |
 | latitude       | float    | Yes      | Geographic latitude                                       |
 | longitude      | float    | Yes      | Geographic longitude                                      |
-| timestamp      | datetime | Yes      | Observation time after converting Unix timestamp          |
-| aqi            | integer  | Yes      | OpenWeather Air Quality Index                             |
-| co             | float    | Yes      | Carbon monoxide                                           |
-| no             | float    | Yes      | Nitric oxide                                              |
-| no2            | float    | Yes      | Nitrogen dioxide                                          |
-| o3             | float    | Yes      | Ozone                                                     |
-| so2            | float    | Yes      | Sulfur dioxide                                            |
-| pm2_5          | float    | Yes      | Fine particulate matter                                   |
-| pm10           | float    | Yes      | Particulate matter                                        |
-| nh3            | float    | Yes      | Ammonia                                                   |
-| ingested_at    | datetime | Yes*     | Time the pipeline received/stored the record              |
+| timestamp      | datetime | Yes      | Observation time after converting Unix timestamp(Datetime)|
+| aqi            | integer  | Yes      | OpenWeather Air Quality Index (1-5;unitless)              |
+| co             | float    | Yes      | Carbon monoxide (µg/m³)                                   |
+| no             | float    | Yes      | Nitric oxide (µg/m³)                                      |
+| no2            | float    | Yes      | Nitrogen dioxide (µg/m³)                                  |
+| o3             | float    | Yes      | Ozone (µg/m³)                                             |
+| so2            | float    | Yes      | Sulfur dioxide (µg/m³)                                    |
+| pm2_5          | float    | Yes      | Fine particulate matter (µg/m³)                           |
+| pm10           | float    | Yes      | Particulate matter (µg/m³)                                |
+| nh3            | float    | Yes      | Ammonia (µg/m³)                                           |
+| ingested_at    | datetime | Yes*     | Time the pipeline received/stored the record (Datetime)   |
 | transformed_at | datetime | Yes*     | Time the raw record was transformed into the gold dataset |
+|                |          |          | (Datetime)                                                |       
 |----------------|----------|----------|-----------------------------------------------------------|
+
+5.1 Proposed Gold record
+-------------------------
+
+{
+    "city": "Sample City",
+    "latitude": 50.0,
+    "longitude": 50.0,
+    "timestamp": "2026-10-06T...",
+    "aqi": 2,
+    "co": 139.58,
+    "no": 0.0,
+    "no2": 0.33,
+    "o3": 91.18,
+    "so2": 2.13,
+    "pm2_5": 17.33,
+    "pm10": 39.01,
+    "nh3": 0.0,
+    "ingested_at": "2026-10-08T...",
+    "transformed_at": "2026-10-08T..."
+}
 
 * Whether these fields are required or nullable should be finalized after the team agrees on missing-value handling.
 The inclusion of air_quality_category and air_quality_score is a proposal and should be confirmed by the mentor/team based on the project's requirements.
 
 6. Gold Data Transformation Rules
 ----------------------------------
+
 The following are proposed rules rather than final team decisions.
-7.1 Data Types
+
+6.1 Data Types
+--------------
 Raw pollutant measurements should be converted to the agreed numeric types.
-7.2 Missing Values
+
+6.2 Missing Values
+------------------
 The team should agree on how missing pollutant values are handled.
 Possible approaches include:
 Keep them as null
 Exclude records that do not contain required measurements
 Apply an agreed imputation strategy
 No missing-value strategy should be assumed until the team agrees.
-7.3 Air Quality Category
+
+6.3 Air Quality Category
+-------------------------
 The gold dataset may contain an air_quality_category derived from the available air-quality measurements or the OpenWeather AQI.
 The category definitions and thresholds should be agreed upon by the team.
 7.4 Air Quality Score
@@ -173,8 +226,9 @@ The calculation and range of this score should be defined and agreed upon before
 7.5 Deterministic Transformation
 Given the same valid raw input, the transformation should produce the same gold output.
 
-8. Proposed Pipeline Function Interfaces
+7. Proposed Pipeline Function Interfaces
 -----------------------------------------
+
 The following interfaces are proposed for discussion:
 def extract(
     city: str,
@@ -199,6 +253,7 @@ The team should also consider whether structured models such as Pydantic models,
 
 9. Data Validation
 -------------------
+
 The pipeline should validate data before it moves between stages.
 Proposed validation includes:
 Raw data
@@ -209,8 +264,7 @@ Timestamp can be interpreted correctly
 AQI is a valid integer
 Pollutant values are numeric
 Unexpected or malformed API responses are handled appropriately
-Gold data
-Required fields are present
+Gold data required fields are present
 Data types are correct
 Transformation rules have been applied
 Air-quality category follows the agreed rules
