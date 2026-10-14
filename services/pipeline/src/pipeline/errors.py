@@ -9,3 +9,5 @@ ERROR_MESSAGES = {
     403: "Key is valid but not allowed to access this resource.",
     404: "Not found: bad URL or unknown city.",
 }
+
+RETRY_STATUSES = {429, 500, 502, 503, 504}
