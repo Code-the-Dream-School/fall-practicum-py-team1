@@ -3,6 +3,10 @@ class APIError(Exception):
         super().__init__(message)
         self.status = status
 
+class MalformedPayloadError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
 ERROR_MESSAGES = {
     400: "Bad request: check your parameters.",
     401: "Invalid or missing API key.",
