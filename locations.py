@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 
 
@@ -26,6 +27,12 @@ def validate_location(raw):
     # bool is a subclass of int, so reject it explicitly.
     if isinstance(lat, bool) or not isinstance(lat, (int, float)):
         raise LocationError("Latitude must be numeric")
+
+    if not math.isfinite(lat):
+        raise LocationError("Latitude must be finite")
+
+    if not math.isfinite(lon):
+        raise LocationError("Longitude must be finite")
 
     if not -90 <= lat <= 90:
         raise LocationError("Latitude must be between -90 and 90")
