@@ -142,10 +142,10 @@ def validate_payload(payload: dict) -> list[str]:
         'components': []
     }
     for l in ls:
+        if not isinstance(l, dict):
+            raise MalformedPayloadError(f"Data in `list` of the payload is not a dict, problem data: {l}")
         if not l:
             empty_entries += 1
-        elif not isinstance(l, dict):
-            raise MalformedPayloadError(f"Data in `list` of the payload is not a dict, problem data: {l}")
         else:
             if not l.get('dt'):
                 empty_dt += 1
