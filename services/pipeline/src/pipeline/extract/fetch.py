@@ -6,18 +6,40 @@ from typing import Literal, Any, Callable
 from datetime import datetime
 
 def fetch_air_pollution(
-        kind: Literal['current', 'history'], # choose between current or historic data
-        lat: float, # lat for the coordinate of the city
-        lon: float, # lon for the coordinate of the city
-        api_key: str, # API key, NEVER HARDCODE THIS, use load_dotenv() or something similar
-        start_ts: datetime | None = None, # Start timestamp for historic data
-        end_ts: datetime | None = None, # End timestamp for historic data
-        http_get: Callable[..., Any] = requests.get, # Use custom inject function for testing
-        max_retries: int = 3, # Max number of retries, each time add a 2s delay
-        base_delay: float = 1.0, # Start delay for retries
-        max_delay: float = 10.0 # Maximum delay for retries
+        kind: Literal['current', 'history'], 
+        lat: float, 
+        lon: float, 
+        api_key: str, 
+        start_ts: datetime | None = None, 
+        end_ts: datetime | None = None, 
+        http_get: Callable[..., Any] = requests.get, 
+        max_retries: int = 3, 
+        base_delay: float = 1.0,
+        max_delay: float = 10.0
     ):
-    """Fetching the air pollution API response"""
+    """Fetch the air pollution API response from OpenWeather.
+
+    Args:
+        kind: Choose between current or historic data.
+        lat: Latitude of the city's coordinate.
+        lon: Longitude of the city's coordinate.
+        api_key: API key. Never hardcode this; use `load_dotenv()` or similar.
+        start_ts: Start timestamp for historic data.
+        end_ts: End timestamp for historic data.
+        http_get: Injectable HTTP function, useful for testing.
+        max_retries: Maximum number of retries.
+        base_delay: Initial delay (seconds) between retries.
+        max_delay: Maximum delay (seconds) between retries.
+
+    Returns:
+        The parsed API response in JSON.
+
+    Raises:
+        ValueError: If `kind` is `'history'` and `start_ts` or `end_ts` is missing.
+        ValueError: If `kind` is not `current` or `history`
+        APIError: Max connection retries reached and still not connecting
+        APIError: Unexpected HTTP status
+    """
     params = {
                 "lat": lat,
                 "lon": lon,
@@ -63,25 +85,56 @@ def fetch_air_pollution(
         raise APIError(ERROR_MESSAGES.get(status, f"Unexpected HTTP {status}."), status)
 
 def validate_payload(payload: dict) -> list[str]:
+    """Validate the structure of an OpenWeather air pollution API payload.
+
+    Performs structural checks on the payload. Problems that make the payload
+    unusable raise an exception. Problems that only affect some of the data are
+    collected and returned as warnings, so the caller can decide how to handle
+    them.
+
+    Expected payload shape:
+        - `coord`: coordinate information for the requested location.
+        - `list`: a list of dict entries, each ideally containing `dt`,
+          `main`, and `components`.
+
+    Args:
+        payload: The parsed JSON response from the air pollution API.
+
+    Returns:
+        A list of human-readable warning messages. The list is empty if no
+        issues were found. Warnings are generated for:
+
+        - An empty `list` (no air pollution data retrieved).
+        - Empty entries in `list`.
+        - Entries missing `dt`.
+        - Entries missing `main` (reported with the affected timestamps).
+        - Entries missing `components` (reported with the affected timestamps).
+
+    Raises:
+        MalformedPayloadError: If the payload is empty or not a dict.
+        MalformedPayloadError: If the `coord` field is missing.
+        MalformedPayloadError: If the `list` field is missing or is not a list.
+        MalformedPayloadError: If any non-empty entry in `list` is not a dict.
+    """
     warnings = []
-    if not payload:
-        raise MalformedPayloadError("Empty payload")
     if not isinstance(payload, dict):
         raise MalformedPayloadError("Payload is not a dict")
-    try:
-        loc = payload['coord']
-    except KeyError as e:
+    if not payload:
+        raise MalformedPayloadError("Empty payload")
+    
+    if 'coord' not in payload:
         raise MalformedPayloadError(f"Missing coordinate information: {e}")
 
     try:
         ls = payload['list']
     except KeyError as e:
-        raise MalformedPayloadError(f"No `list` field in the payload: {e}")
+        raise MalformedPayloadError(f"No `list` field in the payload: {e}") from e
 
-    if len(ls) == 0:
-        warnings.append("No air pollution data retrieved.")
     if not isinstance(ls, list):
         raise MalformedPayloadError(f"`list` of payload is not a list, it is {type(ls)} instead.")
+    if len(ls) == 0:
+        warnings.append("No air pollution data retrieved.")
+    
 
     empty_entries = 0
     empty_dt = 0
