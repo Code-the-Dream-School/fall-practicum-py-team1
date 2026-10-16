@@ -1,7 +1,7 @@
 import requests
 import time
 
-from services.pipeline.src.pipeline.errors import APIError, ERROR_MESSAGES, RETRY_STATUSES, MalformedPayloadError
+from src.pipeline.errors import APIError, ERROR_MESSAGES, RETRY_STATUSES, MalformedPayloadError
 from typing import Literal, Any, Callable
 from datetime import datetime
 
@@ -64,7 +64,6 @@ def fetch_air_pollution(
                 params=params,
                 timeout=10
             )
-            resp.raise_for_status()
         except (requests.Timeout, requests.ConnectionError) as e:
             if attempt == max_retries:
                 raise APIError(f"Network error: {e}") from e
@@ -72,10 +71,8 @@ def fetch_air_pollution(
             continue
 
         status = resp.status_code
-
         if status == 200:
             return resp.json()
-
         if status in RETRY_STATUSES:
             if attempt == max_retries:
                 raise APIError(f"Gave up after {max_retries} retries (HTTP {status}).")
@@ -123,7 +120,7 @@ def validate_payload(payload: dict) -> list[str]:
         raise MalformedPayloadError("Empty payload")
     
     if 'coord' not in payload:
-        raise MalformedPayloadError(f"Missing coordinate information: {e}")
+        raise MalformedPayloadError(f"Missing coordinate information")
 
     try:
         ls = payload['list']
