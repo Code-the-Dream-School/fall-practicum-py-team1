@@ -1,85 +1,9 @@
 import requests
 import time
 
-from src.pipeline.errors import APIError, ERROR_MESSAGES, RETRY_STATUSES, MalformedPayloadError
+from services.pipeline.src.pipeline.errors import APIError, ERROR_MESSAGES, RETRY_STATUSES, MalformedPayloadError
 from typing import Literal, Any, Callable
 from datetime import datetime
-
-def fetch_air_pollution(
-        kind: Literal['current', 'history'], 
-        lat: float, 
-        lon: float, 
-        api_key: str, 
-        start_ts: datetime | None = None, 
-        end_ts: datetime | None = None, 
-        http_get: Callable[..., Any] = requests.get, 
-        max_retries: int = 3, 
-        base_delay: float = 1.0,
-        max_delay: float = 10.0
-    ):
-    """Fetch the air pollution API response from OpenWeather.
-
-    Args:
-        kind: Choose between current or historic data.
-        lat: Latitude of the city's coordinate.
-        lon: Longitude of the city's coordinate.
-        api_key: API key. Never hardcode this; use `load_dotenv()` or similar.
-        start_ts: Start timestamp for historic data.
-        end_ts: End timestamp for historic data.
-        http_get: Injectable HTTP function, useful for testing.
-        max_retries: Maximum number of retries.
-        base_delay: Initial delay (seconds) between retries.
-        max_delay: Maximum delay (seconds) between retries.
-
-    Returns:
-        The parsed API response in JSON.
-
-    Raises:
-        ValueError: If `kind` is `'history'` and `start_ts` or `end_ts` is missing.
-        ValueError: If `kind` is not `current` or `history`
-        APIError: Max connection retries reached and still not connecting
-        APIError: Unexpected HTTP status
-    """
-    params = {
-                "lat": lat,
-                "lon": lon,
-                "appid": api_key,
-            }
-
-    if kind == 'current':
-        base_url = "https://api.openweathermap.org/data/2.5/air_pollution"
-    elif kind == 'history':
-        base_url = "https://api.openweathermap.org/data/2.5/air_pollution/history"
-        if not start_ts or not end_ts:
-            raise ValueError("Missing start/end timestamp for historic data.")
-        params["start"] = start_ts
-        params["end"] = end_ts
-    else:
-        raise ValueError(f"Incorrect data kind ({kind}) to fetch, should be either 'current' or 'history'.")
-
-    for attempt in range(max_retries + 1):
-        try:
-            resp = http_get(
-                base_url,
-                params=params,
-                timeout=10
-            )
-        except (requests.Timeout, requests.ConnectionError) as e:
-            if attempt == max_retries:
-                raise APIError(f"Network error: {e}") from e
-            time.sleep(min(base_delay * 2 ** attempt, max_delay))
-            continue
-
-        status = resp.status_code
-        if status == 200:
-            return resp.json()
-        if status in RETRY_STATUSES:
-            if attempt == max_retries:
-                raise APIError(f"Gave up after {max_retries} retries (HTTP {status}).")
-            time.sleep(min(base_delay * 2 ** attempt, max_delay))
-            continue
-
-        raise APIError(ERROR_MESSAGES.get(status, f"Unexpected HTTP {status}."), status)
 
 def validate_payload(payload: dict) -> list[str]:
     """Validate the structure of an OpenWeather air pollution API payload.
@@ -134,7 +58,6 @@ def validate_payload(payload: dict) -> list[str]:
     
 
     empty_entries = 0
-    empty_dt = 0
     empty_main = 0
     empty_components = 0
     error_dts = {
@@ -148,7 +71,7 @@ def validate_payload(payload: dict) -> list[str]:
             empty_entries += 1
         else:
             if not l.get('dt'):
-                empty_dt += 1
+                raise MalformedPayloadError(f"Data missing timestamp")
             if not l.get('main'):
                 empty_main += 1
                 error_dts['main'].append(l.get('dt'))
@@ -158,14 +81,91 @@ def validate_payload(payload: dict) -> list[str]:
 
     if empty_entries > 0:
         warnings.append(f"{empty_entries} empty air data entries found.")
-    if empty_dt > 0:
-        warnings.append(f"{empty_dt} data missing dt value.")
     if empty_main > 0:
         warnings.append(f"{empty_main} data missing `main` field, at timestamps {error_dts['main']}.")
     if empty_components > 0:
         warnings.append(f"{empty_components} data missing `components` field, at timestamps {error_dts['components']}.")
         
     return warnings
+
+def fetch_air_pollution(
+        kind: Literal['current', 'history'], 
+        lat: float, 
+        lon: float, 
+        api_key: str, 
+        start_ts: datetime | None = None, 
+        end_ts: datetime | None = None, 
+        http_get: Callable[..., Any] = requests.get, 
+        max_retries: int = 3, 
+        base_delay: float = 1.0,
+        max_delay: float = 10.0
+    ):
+    """Fetch the air pollution API response from OpenWeather.
+
+    Args:
+        kind: Choose between current or historic data.
+        lat: Latitude of the city's coordinate.
+        lon: Longitude of the city's coordinate.
+        api_key: API key. Never hardcode this; use `load_dotenv()` or similar.
+        start_ts: Start timestamp for historic data.
+        end_ts: End timestamp for historic data.
+        http_get: Injectable HTTP function, useful for testing.
+        max_retries: Maximum number of retries.
+        base_delay: Initial delay (seconds) between retries.
+        max_delay: Maximum delay (seconds) between retries.
+
+    Returns:
+        results: The parsed API response in JSON.
+        warnings: The warnings during fetching
+
+    Raises:
+        ValueError: If `kind` is `'history'` and `start_ts` or `end_ts` is missing.
+        ValueError: If `kind` is not `current` or `history`
+        APIError: Max connection retries reached and still not connecting
+        APIError: Unexpected HTTP status
+    """
+    params = {
+                "lat": lat,
+                "lon": lon,
+                "appid": api_key,
+            }
+
+    if kind == 'current':
+        base_url = "https://api.openweathermap.org/data/2.5/air_pollution"
+    elif kind == 'history':
+        base_url = "https://api.openweathermap.org/data/2.5/air_pollution/history"
+        if not start_ts or not end_ts:
+            raise ValueError("Missing start/end timestamp for historic data.")
+        params["start"] = start_ts
+        params["end"] = end_ts
+    else:
+        raise ValueError(f"Incorrect data kind ({kind}) to fetch, should be either 'current' or 'history'.")
+
+    for attempt in range(max_retries + 1):
+        try:
+            resp = http_get(
+                base_url,
+                params=params,
+                timeout=10
+            )
+        except (requests.Timeout, requests.ConnectionError) as e:
+            if attempt == max_retries:
+                raise APIError(f"Network error: {e}") from e
+            time.sleep(min(base_delay * 2 ** attempt, max_delay))
+            continue
+
+        status = resp.status_code
+        if status == 200:
+            results = resp.json()
+            warnings = validate_payload(results)
+            return results, warnings
+        if status in RETRY_STATUSES:
+            if attempt == max_retries:
+                raise APIError(f"Gave up after {max_retries} retries (HTTP {status}).")
+            time.sleep(min(base_delay * 2 ** attempt, max_delay))
+            continue
+
+        raise APIError(ERROR_MESSAGES.get(status, f"Unexpected HTTP {status}."), status)
 
 if __name__ == "__main__":
     import os
@@ -182,16 +182,14 @@ if __name__ == "__main__":
         print("=" * 25)
         print(f"Test run for {test}")
         print("=" * 25)
-        resp_json = fetch_air_pollution(
+        resp_json, warnings = fetch_air_pollution(
             kind=test,
             lat=lat,
             lon=lon,
             api_key=os.environ.get("OPENWEATHER_API_KEY"),
             start_ts=start_ts,
-            end_ts=end_ts,
-            # http_get=http_get # use the fake http_get for test
+            end_ts=end_ts
         )
-        warnings = validate_payload(resp_json)
         record_cnt = len(resp_json.get('list'))
         print(f"{record_cnt} records retreived, sample response:")
         if record_cnt < 1:

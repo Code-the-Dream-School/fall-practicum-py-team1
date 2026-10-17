@@ -15,7 +15,7 @@ def test_current_returns_json_and_sends_expected_params(scripted_get, good_paylo
 
     result = fetch_air_pollution("current", 2, 1, api_key="KEY", http_get=get)
 
-    assert result == good_payload
+    assert result == (good_payload, [])
     get.assert_called_once()
     _, kwargs = get.call_args
     assert kwargs["params"]["lat"] == 2
@@ -43,7 +43,7 @@ def test_retries_then_succeeds(scripted_get, good_payload, sleeps):
 
     result = fetch_air_pollution("current", 1.0, 2.0, "KEY", http_get=get, max_retries=3)
 
-    assert result == good_payload
+    assert result == (good_payload, [])
     assert get.call_count == 3
     assert len(sleeps) == 2          # slept between attempts only
 
@@ -69,7 +69,7 @@ def test_retries_on_each_retryable_status(scripted_get, good_payload, sleeps, st
 
     result = fetch_air_pollution("current", 1.0, 2.0, "KEY", http_get=get, max_retries=3)
 
-    assert result == good_payload
+    assert result == (good_payload, [])
     assert get.call_count == 2
 
 def test_backoff_is_capped(scripted_get, sleeps):
@@ -148,9 +148,10 @@ def test_empty_entries_are_counted(good_payload):
     assert validate_payload(good_payload) == ["3 empty air data entries found."]
 
 
-def test_missing_dt_warns(good_payload):
+def test_missing_dt(good_payload):
     good_payload["list"] = [make_entry(dt=None)]
-    assert validate_payload(good_payload) == ["1 data missing dt value."]
+    with pytest.raises(MalformedPayloadError, match="missing timestamp"):
+        validate_payload(good_payload)
 
 
 def test_missing_main_reports_timestamp(good_payload):
@@ -185,34 +186,22 @@ def test_falsy_main_counts_as_missing(good_payload, falsy_value):
     assert len(warnings) == 1
     assert "`main`" in warnings[0]
 
-
-def test_entry_missing_dt_and_main_reports_none_timestamp(good_payload):
-    good_payload["list"] = [make_entry(dt=None, main=None)]
-    assert validate_payload(good_payload) == [
-        "1 data missing dt value.",
-        "1 data missing `main` field, at timestamps [None].",
-    ]
-
-
 def test_entry_missing_everything_but_nonempty(good_payload):
-    good_payload["list"] = [{"extra": 1}]   # non-empty dict, no expected keys
+    good_payload["list"] = [{"extra": 1, "dt": 1}]   # non-empty dict, no expected keys
     assert validate_payload(good_payload) == [
-        "1 data missing dt value.",
-        "1 data missing `main` field, at timestamps [None].",
-        "1 data missing `components` field, at timestamps [None].",
+        "1 data missing `main` field, at timestamps [1].",
+        "1 data missing `components` field, at timestamps [1].",
     ]
 
 
 def test_all_warning_types_together_in_order(good_payload):
     good_payload["list"] = [
         {},                                      # empty entry
-        make_entry(dt=None),                     # missing dt
         make_entry(dt=10, main=None),            # missing main
         make_entry(dt=20, components=None),      # missing components
     ]
     assert validate_payload(good_payload) == [
         "1 empty air data entries found.",
-        "1 data missing dt value.",
         "1 data missing `main` field, at timestamps [10].",
         "1 data missing `components` field, at timestamps [20].",
     ]
