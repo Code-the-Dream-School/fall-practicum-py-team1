@@ -3,11 +3,18 @@ import requests
 import json
 from pathlib import Path
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
-from src.pipeline.extract.fetch import fetch_air_pollution, validate_payload
-from src.pipeline.errors import MalformedPayloadError, APIError, RETRY_STATUSES
-from tests.conftest import make_response
+from pipeline.extract.fetch import fetch_air_pollution, validate_payload
+from pipeline.errors import MalformedPayloadError, APIError, RETRY_STATUSES
 
+def make_response(json_data=None, status=200):
+    resp = Mock()
+    resp.status_code = status
+    resp.json.return_value = json_data if json_data is not None else {}
+    if status >= 400:
+        resp.raise_for_status.side_effect = requests.HTTPError(str(status))
+    return resp
 
 # Testing fetch_air_pollution()
 def test_current_returns_json_and_sends_expected_params(scripted_get, good_payload):
@@ -17,7 +24,7 @@ def test_current_returns_json_and_sends_expected_params(scripted_get, good_paylo
 
     assert result == (good_payload, [])
     get.assert_called_once()
-    _, kwargs = get.call_args
+    _, kwargs = get.call_args 
     assert kwargs["params"]["lat"] == 2
     assert kwargs["params"]["lon"] == 1
     assert kwargs["params"]["appid"] == "KEY"

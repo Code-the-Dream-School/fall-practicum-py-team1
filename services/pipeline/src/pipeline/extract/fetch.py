@@ -1,7 +1,7 @@
 import requests
 import time
 
-from services.pipeline.src.pipeline.errors import APIError, ERROR_MESSAGES, RETRY_STATUSES, MalformedPayloadError
+from pipeline.errors import APIError, ERROR_MESSAGES, RETRY_STATUSES, MalformedPayloadError
 from typing import Literal, Any, Callable
 from datetime import datetime
 
