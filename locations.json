@@ -1,0 +1,18 @@
+{
+    "locations": [
+      {
+        "city": "Fremont",
+        "state": "California",
+        "country": "US",
+        "lat": 37.5485,
+        "lon": -121.9886
+      },
+      {
+        "city": "San Francisco",
+        "state": "California",
+        "country": "US",
+        "lat": 37.7749,
+        "lon": -122.4194
+      }
+    ]
+  }
