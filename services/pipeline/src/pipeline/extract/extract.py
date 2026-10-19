@@ -14,7 +14,7 @@ class RawRecord:
             lat: float,
             lon: float,
             dt: datetime,
-            aqi: int,
+            aqi: int | None,
             co: float | None,
             no: float | None,
             no2: float | None,
@@ -43,6 +43,17 @@ class RawRecord:
         self.warnings = warnings
 
 def load_raw(city: str, payload: dict, warnings: list) -> list[RawRecord]:
+    """
+    Load the given payload from a single city into RawRecord lists ready for upserting to database.
+
+    Args:
+        city: Name of the city, not a primary key.
+        payload: The parsed JSON response from `fetch_air_pollution()`.
+        warnings: List of warnings from `fetch_air_pollution()`.
+
+    Returns:
+        A list RawRecord dataclass ready for upserting into database.
+    """
     raw_records = []
     coord = payload.get('coord', {})
     ls = payload.get('list', {})
@@ -73,6 +84,18 @@ def load_raw(city: str, payload: dict, warnings: list) -> list[RawRecord]:
     return raw_records
 
 def extract(kind: Literal['current', 'history'], start_ts: datetime | None = None, end_ts: datetime | None = None, **kwarg) -> list[RawRecord]:
+    """
+    Full extract pipeline to fetch response from API to uploadable RawRecord class.
+
+    Args:
+        kind: 'current' or 'history' for different air pollution data.
+        start_ts: Beginning date of parsing (datatime with timezone info) if 'history' is selected.
+        end_ts: Ending date of parsing (datatime with timezone info) if 'history' is selected.
+        **kwarg: Keyword args for `fetch_air_pollution()` function, see docstring for `fetch_air_pollution()` for more details.
+
+    Returns:
+        A list RawRecord dataclass ready for upserting into database.
+    """
     raw_records = []
     load_dotenv()
     api_key = get_api_key()
