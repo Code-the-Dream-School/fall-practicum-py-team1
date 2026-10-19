@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from extract.config import get_api_key, build_time_window
-from extract.locations import load_locations
-from extract.fetch import fetch_air_pollution, validate_payload
+from pipeline.extract.config import get_api_key, build_time_window
+from typing import Literal
+from pipeline.extract.locations import load_locations
+from pipeline.extract.fetch import fetch_air_pollution, validate_payload
 
 class RawRecord:
     def __init__(
@@ -61,6 +62,32 @@ def load_raw(city: str, payload: dict, warnings: list) -> RawRecord:
         warnings=warnings
     )
 
-def extract():
+def extract(kind: Literal['current', 'history'], start_ts: datetime | None = None, end_ts: datetime | None = None, **kwarg) -> list[RawRecord]:
+    raw_records = []
     api_key = get_api_key()
     locations = load_locations()
+    if start_ts and end_ts:
+        start_ts, end_ts = build_time_window(start_ts, end_ts)
+    for loc in locations:
+        city = loc.get('city')
+        lat = loc.get('lat')
+        lon = lon.get('lon')
+        results, warnings = fetch_air_pollution(
+            kind=kind,
+            lat=lat,
+            lon=lon,
+            api_key=api_key,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            **kwarg
+        )
+        raw_records.append(load_raw(city, results, warnings))
+    return raw_records
+
+if __name__ == "__main__":
+    print("=" * 25)
+    print("Test current call")
+    print("=" * 25)
+    raw_records = extract('current')
+    for rec in raw_records:
+        print(rec)
