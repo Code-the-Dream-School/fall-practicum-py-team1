@@ -20,7 +20,7 @@ def test_curret_load_raw(good_payload):
         aqi,
         **ls["components"],
         ingested_at=current_time,
-        warnings=["This is a warning"]
+        # warnings=["This is a warning"]
     )]
 
 def test_history_load_raw(good_history_payload):
@@ -41,7 +41,7 @@ def test_history_load_raw(good_history_payload):
                 aqi,
                 **l["components"],
                 ingested_at=current_time,
-                warnings=["This is a warning"]
+                # warnings=["This is a warning"]
             )
         )
     assert load_raw("Fremont", good_history_payload, warnings=["This is a warning"]) == raws

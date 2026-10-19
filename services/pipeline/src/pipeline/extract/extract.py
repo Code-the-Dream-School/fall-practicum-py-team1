@@ -24,7 +24,7 @@ class RawRecord:
             pm10: float | None,
             nh3: float | None,
             ingested_at: datetime,
-            warnings: list[str] | None
+            # warnings: list[str] | None
     ):
         self.city = city
         self.lat = lat
@@ -40,16 +40,16 @@ class RawRecord:
         self.pm10 = pm10
         self.nh3 = nh3
         self.ingested_at = ingested_at
-        self.warnings = warnings
+        # self.warnings = warnings
 
-def load_raw(city: str, payload: dict, warnings: list) -> list[RawRecord]:
+def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[RawRecord]:
     """
     Load the given payload from a single city into RawRecord lists ready for upserting to database.
 
     Args:
         city: Name of the city, not a primary key.
         payload: The parsed JSON response from `fetch_air_pollution()`.
-        warnings: List of warnings from `fetch_air_pollution()`.
+        warnings: List of warnings from `fetch_air_pollution()`, will depreciate in the next iteration.
 
     Returns:
         A list RawRecord dataclass ready for upserting into database.
@@ -78,7 +78,7 @@ def load_raw(city: str, payload: dict, warnings: list) -> list[RawRecord]:
                 pm10=comp.get('pm10'),
                 nh3=comp.get('nh3'),
                 ingested_at=ingested_at,
-                warnings=warnings
+                # warnings=warnings
             )
         )
     return raw_records
