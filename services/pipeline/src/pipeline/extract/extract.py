@@ -23,7 +23,7 @@ class RawRecord:
             pm2_5: float | None,
             pm10: float | None,
             nh3: float | None,
-            ingested_at: datetime,
+            # ingested_at: datetime,
             # warnings: list[str] | None
     ):
         self.city = city
@@ -39,7 +39,7 @@ class RawRecord:
         self.pm2_5 = pm2_5
         self.pm10 = pm10
         self.nh3 = nh3
-        self.ingested_at = ingested_at
+        # self.ingested_at = ingested_at
         # self.warnings = warnings
 
 def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[RawRecord]:
@@ -61,7 +61,7 @@ def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[Raw
         main = entry.get('main', {})
         comp = entry.get('components', {})
         dt = entry.get('dt')
-        ingested_at = datetime.now(tz=timezone.utc)
+        # ingested_at = datetime.now(tz=timezone.utc)
         raw_records.append(
             RawRecord(
                 city=city,
@@ -77,7 +77,7 @@ def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[Raw
                 pm2_5=comp.get('pm2_5'),
                 pm10=comp.get('pm10'),
                 nh3=comp.get('nh3'),
-                ingested_at=ingested_at,
+                # ingested_at=ingested_at,
                 # warnings=warnings
             )
         )

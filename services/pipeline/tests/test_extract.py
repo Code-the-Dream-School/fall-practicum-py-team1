@@ -11,7 +11,7 @@ def test_curret_load_raw(good_payload):
     aqi = ls.get("main").get("aqi")
     raw = load_raw("Fremont", good_payload, warnings=["This is a warning"])
     current_time = datetime.now()
-    raw[0].ingested_at = current_time
+    # raw[0].ingested_at = current_time
     assert load_raw("Fremont", good_payload, warnings=["This is a warning"]) == [RawRecord(
         "Fremont",
         coords.get("lat"),
@@ -19,7 +19,7 @@ def test_curret_load_raw(good_payload):
         ls.get("dt"),
         aqi,
         **ls["components"],
-        ingested_at=current_time,
+        # ingested_at=current_time,
         # warnings=["This is a warning"]
     )]
 
@@ -31,7 +31,7 @@ def test_history_load_raw(good_history_payload):
     for l in ls:
         aqi = l.get("main").get("aqi")
         raw = load_raw("Fremont", good_history_payload, warnings=["This is a warning"])
-        raw[0].ingested_at = current_time
+        # raw[0].ingested_at = current_time
         raws.append(
             RawRecord(
                 "Fremont",
@@ -40,7 +40,7 @@ def test_history_load_raw(good_history_payload):
                 l.get("dt"),
                 aqi,
                 **l["components"],
-                ingested_at=current_time,
+                # ingested_at=current_time,
                 # warnings=["This is a warning"]
             )
         )
