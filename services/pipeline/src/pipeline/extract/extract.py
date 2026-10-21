@@ -20,7 +20,7 @@ class RawRecord:
             city: str,
             lat: float,
             lon: float,
-            dt: datetime,
+            dt: int,
             aqi: int | None,
             co: float | None,
             no: float | None,
