@@ -6,6 +6,13 @@ from pipeline.extract.locations import load_locations
 from pipeline.extract.fetch import fetch_air_pollution, validate_payload
 from dataclasses import dataclass
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
 @dataclass
 class RawRecord:
     def __init__(
@@ -108,8 +115,11 @@ def extract(kind: Literal['current', 'history'], start_ts: datetime | None = Non
             end_ts=end_ts,
             **kwarg
         )
+
+        logger = logging.getLogger(__name__)
         warnings = validate_payload(results)
-        print(warnings)
+        if warnings:
+            logger.warning(warnings)
         raw_records.extend(load_raw(city, results))
     return raw_records
 
