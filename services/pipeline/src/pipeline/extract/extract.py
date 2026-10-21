@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from pipeline.extract.config import get_api_key, build_time_window
-from typing import Literal
+from typing import Literal, Callable
 from dotenv import load_dotenv
 from pipeline.extract.locations import load_locations
 from pipeline.extract.fetch import fetch_air_pollution, validate_payload
@@ -83,7 +83,13 @@ def load_raw(city: str, payload: dict) -> list[RawRecord]:
         )
     return raw_records
 
-def extract(kind: Literal['current', 'history'], start_ts: datetime | None = None, end_ts: datetime | None = None, **kwarg) -> list[RawRecord]:
+def extract(
+        kind: Literal['current', 'history'], 
+        start_ts: datetime | None = None, 
+        end_ts: datetime | None = None, 
+        validator: Callable[[dict], list[str]]=validate_payload, 
+        **kwarg
+        ) -> list[RawRecord]:
     """
     Full extract pipeline to fetch response from API to uploadable RawRecord class.
 
@@ -117,7 +123,7 @@ def extract(kind: Literal['current', 'history'], start_ts: datetime | None = Non
         )
 
         logger = logging.getLogger(__name__)
-        warnings = validate_payload(results)
+        warnings = validator(results)
         if warnings:
             logger.warning(warnings)
         raw_records.extend(load_raw(city, results))

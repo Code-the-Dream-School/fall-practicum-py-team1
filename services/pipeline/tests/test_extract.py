@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import pytest
 import requests
+import logging
 from unittest.mock import Mock
 
 from pipeline.extract.extract import load_raw, extract, RawRecord
@@ -68,3 +69,20 @@ def test_extract_history(good_history_payload, scripted_get, monkeypatch):
                       end_ts=datetime.strptime("2026-01-01", "%Y-%m-%d").astimezone(timezone.utc))
     assert len(results) == 25
     assert results == load_raw("Fremont", good_history_payload)
+
+@pytest.mark.parametrize("fake_output, should_log", [
+    (["temp missing"], True),
+    ([], False),
+    (None, False),
+])
+def test_extract_warning_logging(caplog, fake_output, should_log, scripted_get, monkeypatch, good_payload):
+    monkeypatch.setenv("OPENWEATHER_API_KEY", "fake")
+    monkeypatch.setattr(
+        "pipeline.extract.extract.load_locations",
+        lambda: [{"city": "Fremont", "lat": 1, "lon": 2}],
+    ) # Only get Fremont
+    get = scripted_get(make_response(good_payload))
+    with caplog.at_level(logging.WARNING):
+        extract("current", validator=lambda r: fake_output, http_get=get)
+    assert ("WARNING" in caplog.text) == should_log
+    assert (str(fake_output) in caplog.text) == should_log
