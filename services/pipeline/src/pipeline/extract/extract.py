@@ -3,7 +3,7 @@ from pipeline.extract.config import get_api_key, build_time_window
 from typing import Literal
 from dotenv import load_dotenv
 from pipeline.extract.locations import load_locations
-from pipeline.extract.fetch import fetch_air_pollution
+from pipeline.extract.fetch import fetch_air_pollution, validate_payload
 from dataclasses import dataclass
 
 @dataclass
@@ -22,9 +22,7 @@ class RawRecord:
             so2: float | None,
             pm2_5: float | None,
             pm10: float | None,
-            nh3: float | None,
-            # ingested_at: datetime,
-            # warnings: list[str] | None
+            nh3: float | None
     ):
         self.city = city
         self.lat = lat
@@ -39,10 +37,8 @@ class RawRecord:
         self.pm2_5 = pm2_5
         self.pm10 = pm10
         self.nh3 = nh3
-        # self.ingested_at = ingested_at
-        # self.warnings = warnings
 
-def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[RawRecord]:
+def load_raw(city: str, payload: dict) -> list[RawRecord]:
     """
     Load the given payload from a single city into RawRecord lists ready for upserting to database.
 
@@ -61,7 +57,6 @@ def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[Raw
         main = entry.get('main', {})
         comp = entry.get('components', {})
         dt = entry.get('dt')
-        # ingested_at = datetime.now(tz=timezone.utc)
         raw_records.append(
             RawRecord(
                 city=city,
@@ -76,9 +71,7 @@ def load_raw(city: str, payload: dict, warnings: list | None = None) -> list[Raw
                 so2=comp.get('so2'),
                 pm2_5=comp.get('pm2_5'),
                 pm10=comp.get('pm10'),
-                nh3=comp.get('nh3'),
-                # ingested_at=ingested_at,
-                # warnings=warnings
+                nh3=comp.get('nh3')
             )
         )
     return raw_records
@@ -106,7 +99,7 @@ def extract(kind: Literal['current', 'history'], start_ts: datetime | None = Non
         city = loc.get('city')
         lat = loc.get('lat')
         lon = loc.get('lon')
-        results, warnings = fetch_air_pollution(
+        results = fetch_air_pollution(
             kind=kind,
             lat=lat,
             lon=lon,
@@ -115,7 +108,9 @@ def extract(kind: Literal['current', 'history'], start_ts: datetime | None = Non
             end_ts=end_ts,
             **kwarg
         )
-        raw_records.extend(load_raw(city, results, warnings))
+        warnings = validate_payload(results)
+        print(warnings)
+        raw_records.extend(load_raw(city, results))
     return raw_records
 
 if __name__ == "__main__":
