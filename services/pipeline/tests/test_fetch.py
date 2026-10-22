@@ -22,7 +22,7 @@ def test_current_returns_json_and_sends_expected_params(scripted_get, good_paylo
 
     result = fetch_air_pollution("current", 2, 1, api_key="KEY", http_get=get)
 
-    assert result == (good_payload, [])
+    assert result == good_payload
     get.assert_called_once()
     _, kwargs = get.call_args 
     assert kwargs["params"]["lat"] == 2
@@ -50,7 +50,7 @@ def test_retries_then_succeeds(scripted_get, good_payload, sleeps):
 
     result = fetch_air_pollution("current", 1.0, 2.0, "KEY", http_get=get, max_retries=3)
 
-    assert result == (good_payload, [])
+    assert result == good_payload
     assert get.call_count == 3
     assert len(sleeps) == 2          # slept between attempts only
 
@@ -76,7 +76,7 @@ def test_retries_on_each_retryable_status(scripted_get, good_payload, sleeps, st
 
     result = fetch_air_pollution("current", 1.0, 2.0, "KEY", http_get=get, max_retries=3)
 
-    assert result == (good_payload, [])
+    assert result == good_payload
     assert get.call_count == 2
 
 def test_backoff_is_capped(scripted_get, sleeps):
@@ -108,7 +108,7 @@ def test_empty_payload():
 def test_missing_coord(good_payload):
     del good_payload["coord"]
     with pytest.raises(MalformedPayloadError, match="Missing coord"):
-            validate_payload(good_payload)
+        validate_payload(good_payload)
 
 def test_missing_list(good_payload):
     del good_payload["list"]
