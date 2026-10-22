@@ -25,3 +25,7 @@ def sleeps(monkeypatch):
 @pytest.fixture
 def good_payload():
     return json.loads((FIXTURES / "air_pollution_current.json").read_text())
+
+@pytest.fixture
+def good_history_payload():
+    return json.loads((FIXTURES / "air_pollution_history.json").read_text())

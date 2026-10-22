@@ -157,8 +157,7 @@ def fetch_air_pollution(
         status = resp.status_code
         if status == 200:
             results = resp.json()
-            warnings = validate_payload(results)
-            return results, warnings
+            return results
         if status in RETRY_STATUSES:
             if attempt == max_retries:
                 raise APIError(f"Gave up after {max_retries} retries (HTTP {status}).")
@@ -182,14 +181,15 @@ if __name__ == "__main__":
         print("=" * 25)
         print(f"Test run for {test}")
         print("=" * 25)
-        resp_json, warnings = fetch_air_pollution(
+        resp_json = fetch_air_pollution(
             kind=test,
             lat=lat,
             lon=lon,
             api_key=os.environ.get("OPENWEATHER_API_KEY"),
             start_ts=start_ts,
             end_ts=end_ts
-        )
+        )        
+        warnings = validate_payload(resp_json)
         record_cnt = len(resp_json.get('list'))
         print(f"{record_cnt} records retreived, sample response:")
         if record_cnt < 1:

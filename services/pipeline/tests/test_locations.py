@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from locations import (
+from pipeline.extract.locations import (
     LocationError,
     load_locations,
     validate_location,
