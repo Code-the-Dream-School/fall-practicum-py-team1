@@ -1,18 +1,28 @@
 {
-    "locations": [
-      {
-        "city": "Fremont",
-        "state": "California",
-        "country": "US",
-        "lat": 37.5485,
-        "lon": -121.9886
-      },
-      {
-        "city": "San Francisco",
-        "state": "California",
-        "country": "US",
-        "lat": 37.7749,
-        "lon": -122.4194
-      }
-    ]
-  }
+  "locations": [
+    {
+      "city": "Fremont",
+      "state": "California",
+      "country": "US",
+      "lat": 37.5485,
+      "lon": -121.9886,
+      "timezone": "America/Los_Angeles"
+    },
+    {
+      "city": "San Francisco",
+      "state": "California",
+      "country": "US",
+      "lat": 37.7749,
+      "lon": -122.4194,
+      "timezone": "America/Los_Angeles"
+    },
+    {
+      "city": "Los Angeles",
+      "state": "California",
+      "country": "US",
+      "lat": 34.0522,
+      "lon": -118.2437,
+      "timezone": "America/Los_Angeles"
+    }
+  ]
+}

@@ -156,3 +156,6 @@ data/
 # Docker
 *.pid
 .tools/
+
+# Generated preview data
+services/pipeline/src/pipeline/transform/gold_preview.csv
