@@ -2,14 +2,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pipeline.extract.extract import RawRecord
 from pipeline.load.raw import RawLoadError, load_raw
 
 
-def sample_record():
-    return {
+def sample_record(**overrides):
+    values = {
+        "city": "Carmichael",
+        "lat": 38.6171,
+        "lon": -121.3283,
         "dt": 1792346400,
-        "latitude": 38.6171,
-        "longitude": -121.3283,
         "aqi": 2,
         "co": 139.58,
         "no": 0.0,
@@ -20,6 +22,18 @@ def sample_record():
         "pm10": 39.01,
         "nh3": 0.0,
     }
+    values.update(overrides)
+    return RawRecord(**values)
+
+
+def mock_database():
+    connection = MagicMock()
+    cursor = MagicMock()
+
+    connection.__enter__.return_value = connection
+    connection.cursor.return_value.__enter__.return_value = cursor
+
+    return connection, cursor
 
 
 def test_load_raw_returns_zero_for_empty_records():
@@ -29,23 +43,8 @@ def test_load_raw_returns_zero_for_empty_records():
     connect.assert_not_called()
 
 
-def test_load_raw_rejects_missing_fields():
-    record = sample_record()
-    del record["aqi"]
-
-    with patch("pipeline.load.raw.psycopg.connect") as connect:
-        with pytest.raises(ValueError, match="aqi"):
-            load_raw([record])
-
-    connect.assert_not_called()
-
-
 def test_load_raw_upserts_records():
-    mock_connection = MagicMock()
-    mock_cursor = MagicMock()
-
-    mock_connection.__enter__.return_value = mock_connection
-    mock_connection.cursor.return_value.__enter__.return_value = mock_cursor
+    connection, cursor = mock_database()
 
     with patch.dict("os.environ", {
         "SUPABASE_DB_HOST": "localhost",
@@ -54,46 +53,67 @@ def test_load_raw_upserts_records():
         "SUPABASE_DB_PASSWORD": "test_password",
     }), patch(
         "pipeline.load.raw.psycopg.connect",
-        return_value=mock_connection,
+        return_value=connection,
     ):
         result = load_raw([sample_record()])
 
     assert result == 1
-    mock_cursor.executemany.assert_called_once()
+    cursor.executemany.assert_called_once()
 
-    sql = mock_cursor.executemany.call_args.args[0]
+    sql, rows = cursor.executemany.call_args.args
     assert "ON CONFLICT (dt, latitude, longitude)" in sql
     assert "DO UPDATE SET" in sql
+    assert rows[0][:3] == (1792346400, 38.6171, -121.3283)
+
+
+def test_load_raw_warns_for_missing_measurements(caplog):
+    record = sample_record(aqi=None, co=None)
+
+    connection, cursor = mock_database()
+
+    with patch.dict("os.environ", {
+        "SUPABASE_DB_HOST": "localhost",
+        "SUPABASE_DB_NAME": "test_db",
+        "SUPABASE_DB_USER": "test_user",
+        "SUPABASE_DB_PASSWORD": "test_password",
+    }), patch(
+        "pipeline.load.raw.psycopg.connect",
+        return_value=connection,
+    ):
+        assert load_raw([record]) == 1
+
+    assert "aqi, co" in caplog.text
+
+    rows = cursor.executemany.call_args.args[1]
+    assert rows[0][3] is None
+    assert rows[0][4] is None
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"dt": None},
+        {"lat": None},
+        {"lon": None},
+    ],
+)
+def test_load_raw_rejects_missing_primary_key_values(overrides):
+    with patch("pipeline.load.raw.psycopg.connect") as connect:
+        with pytest.raises(ValueError, match="dt, lat, and lon"):
+            load_raw([sample_record(**overrides)])
+
+    connect.assert_not_called()
 
 
 def test_load_raw_reports_database_failure():
-    with patch(
+    with patch.dict("os.environ", {
+        "SUPABASE_DB_HOST": "localhost",
+        "SUPABASE_DB_NAME": "test_db",
+        "SUPABASE_DB_USER": "test_user",
+        "SUPABASE_DB_PASSWORD": "test_password",
+    }), patch(
         "pipeline.load.raw.psycopg.connect",
         side_effect=OSError("Connection failed"),
     ):
         with pytest.raises(RawLoadError, match="Failed to write 1 raw record"):
             load_raw([sample_record()])
-
-
-def test_load_raw_accepts_timestamp_string():
-    record = sample_record()
-    record["timestamp"] = "2026-10-18T12:00:00+00:00"
-    del record["dt"]
-
-    mock_connection = MagicMock()
-    mock_cursor = MagicMock()
-    mock_connection.__enter__.return_value = mock_connection
-    mock_connection.cursor.return_value.__enter__.return_value = mock_cursor
-
-    with patch.dict("os.environ", {
-        "SUPABASE_DB_HOST": "localhost",
-        "SUPABASE_DB_NAME": "test_db",
-        "SUPABASE_DB_USER": "test_user",
-        "SUPABASE_DB_PASSWORD": "test_password",
-    }), patch(
-        "pipeline.load.raw.psycopg.connect",
-        return_value=mock_connection,
-    ):
-        assert load_raw([record]) == 1
-    rows = mock_cursor.executemany.call_args.args[1]
-    assert rows[0][0] == 1792324800

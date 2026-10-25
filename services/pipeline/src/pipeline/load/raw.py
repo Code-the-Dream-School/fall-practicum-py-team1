@@ -1,27 +1,32 @@
+import logging
 import os
-from datetime import datetime, timezone
 
 import psycopg
+
+from pipeline.extract.extract import RawRecord
+
+
+logger = logging.getLogger(__name__)
 
 
 class RawLoadError(Exception):
     """Raised when raw records cannot be written to the database."""
 
 
-def load_raw(records: list[dict]) -> int:
+def load_raw(records: list[RawRecord]) -> int:
     """Upsert raw air-pollution records into PostgreSQL.
 
     Record identity is (dt, latitude, longitude), matching the
     air_pollution_raw primary key. Repeated records update existing rows.
+
+    Missing optional pollutant measurements are logged and stored as NULL.
 
     Returns the number of records processed.
     """
     if not records:
         return 0
 
-    required_fields = {
-        "latitude",
-        "longitude",
+    optional_fields = (
         "aqi",
         "co",
         "no",
@@ -31,52 +36,46 @@ def load_raw(records: list[dict]) -> int:
         "pm2_5",
         "pm10",
         "nh3",
-    }
+    )
 
     rows = []
+
     for index, record in enumerate(records):
-        missing = required_fields - record.keys()
+        if record.dt is None or record.lat is None or record.lon is None:
+            raise ValueError(
+                f"Record {index} must have dt, lat, and lon "
+                "to identify the database row."
+            )
+
+        missing = [
+            field
+            for field in optional_fields
+            if getattr(record, field) is None
+        ]
+
         if missing:
-            raise ValueError(
-                f"Record {index} is missing required fields: "
-                f"{', '.join(sorted(missing))}"
+            logger.warning(
+                "Record %s has missing measurements: %s",
+                index,
+                ", ".join(missing),
             )
 
-        if "dt" in record:
-            dt = record["dt"]
-        elif "timestamp" in record:
-            timestamp = record["timestamp"]
-            if isinstance(timestamp, datetime):
-                if timestamp.tzinfo is None:
-                    timestamp = timestamp.replace(tzinfo=timezone.utc)
-                dt = int(timestamp.timestamp())
-            elif isinstance(timestamp, str):
-                dt = int(datetime.fromisoformat(
-                    timestamp.replace("Z", "+00:00")
-                ).timestamp())
-            else:
-                raise ValueError(
-                    f"Record {index} has an invalid timestamp"
-                )
-        else:
-            raise ValueError(
-                f"Record {index} must contain 'dt' or 'timestamp'"
+        rows.append(
+            (
+                record.dt,
+                record.lat,
+                record.lon,
+                record.aqi,
+                record.co,
+                record.no,
+                record.no2,
+                record.o3,
+                record.so2,
+                record.pm2_5,
+                record.pm10,
+                record.nh3,
             )
-
-        rows.append((
-            dt,
-            record["latitude"],
-            record["longitude"],
-            record["aqi"],
-            record["co"],
-            record["no"],
-            record["no2"],
-            record["o3"],
-            record["so2"],
-            record["pm2_5"],
-            record["pm10"],
-            record["nh3"],
-        ))
+        )
 
     try:
         with psycopg.connect(
