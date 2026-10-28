@@ -4,7 +4,7 @@ from typing import Literal, Callable
 from dotenv import load_dotenv
 from pipeline.extract.locations import load_locations
 from pipeline.extract.fetch import fetch_air_pollution, validate_payload
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 import logging
 from pipeline.log_run import save_run_record
@@ -16,35 +16,19 @@ logging.basicConfig(
 
 @dataclass
 class RawRecord:
-    def __init__(
-            self,
-            city: str,
-            lat: float,
-            lon: float,
-            dt: int,
-            aqi: int | None,
-            co: float | None,
-            no: float | None,
-            no2: float | None,
-            o3: float | None,
-            so2: float | None,
-            pm2_5: float | None,
-            pm10: float | None,
-            nh3: float | None
-    ):
-        self.city = city
-        self.lat = lat
-        self.lon = lon
-        self.dt = dt
-        self.aqi = aqi
-        self.co = co
-        self.no = no
-        self.no2 = no2
-        self.o3 = o3
-        self.so2 = so2
-        self.pm2_5 = pm2_5
-        self.pm10 = pm10
-        self.nh3 = nh3
+    city: str
+    lat: float
+    lon: float
+    dt: int
+    aqi: int | None = None
+    co: float | None = None
+    no: float | None = None
+    no2: float | None = None
+    o3: float | None = None
+    so2: float | None = None
+    pm2_5: float | None = None
+    pm10: float | None = None
+    nh3: float | None = None
 
 def load_raw(city: str, payload: dict) -> list[RawRecord]:
     """
