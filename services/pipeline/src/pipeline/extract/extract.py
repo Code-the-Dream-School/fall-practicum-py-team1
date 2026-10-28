@@ -158,7 +158,6 @@ def extract(
             logger.exception("Could not save run record to database")
 
 if __name__ == "__main__":
-    from pipeline.extract.config import build_time_window
     load_dotenv()
     print("=" * 25)
     print("Test current call")
