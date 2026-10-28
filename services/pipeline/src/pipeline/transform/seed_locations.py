@@ -1,7 +1,9 @@
 
 import json
 import os
+import logging
 from pathlib import Path
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 from supabase import create_client
@@ -22,8 +24,11 @@ if PROJECT_ROOT is None:
 
 load_dotenv(PROJECT_ROOT / ".env")
 
-LOCATIONS_FILE = PROJECT_ROOT / "locations.json"
-
+LOCATIONS_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "extract"
+    / "locations.json"
+)
 
 def seed_locations():
     url = os.getenv("SUPABASE_URL")
@@ -39,57 +44,39 @@ def seed_locations():
     with LOCATIONS_FILE.open("r", encoding="utf-8") as file:
         locations = json.load(file)["locations"]
 
-    # Read existing location coordinates
-    response = (
-        client.table("locations")
-        .select("latitude, longitude")
-        .execute()
-    )
-
-    existing = {
-        (round(float(row["latitude"]), 6),
-         round(float(row["longitude"]), 6))
-        for row in response.data
-    }
-
-    rows_to_insert = []
-
-    for location in locations:
-        coordinates = (
-            round(float(location["lat"]), 6),
-            round(float(location["lon"]), 6),
-        )
-
-        if coordinates in existing:
-            print(f"Already exists: {location['city']}")
-            continue
-
-        rows_to_insert.append({
+    rows = [
+        {
             "city": location["city"],
             "state": location["state"],
             "country": location["country"],
             "latitude": location["lat"],
             "longitude": location["lon"],
             "timezone": location["timezone"],
-        })
+        }
+        for location in locations
+    ]
 
-        existing.add(coordinates)
-
-    if not rows_to_insert:
-        print("No new locations to insert.")
+    if not rows:
+        logger.info("No locations to seed.")
         return
 
     result = (
         client.table("locations")
-        .insert(rows_to_insert)
+        .upsert(
+            rows,
+            on_conflict="city,latitude,longitude",
+        )
         .execute()
     )
 
-    print(f"Inserted {len(result.data)} location(s).")
-
-    for row in result.data:
-        print(f"- {row['city']}")
+    logger.info("Upsert request completed for %d locations.", len(rows))
 
 
 if __name__ == "__main__":
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
     seed_locations()

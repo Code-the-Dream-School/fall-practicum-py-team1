@@ -1,12 +1,14 @@
 
 from datetime import datetime, timezone
 import os
+import logging
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 from dotenv import load_dotenv
 from supabase import create_client
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------
@@ -69,7 +71,10 @@ def create_supabase_client():
 
 
 def fetch_all_rows(client, table, columns, page_size=1000):
-    """Fetch every row using pagination."""
+    """Fetch every row using pagination.
+       Supabase queries have a default 1,000-row limit.
+       Pagination ensures we fetch all rows in batches.
+    """
     rows = []
     start = 0
 
@@ -89,7 +94,7 @@ def fetch_all_rows(client, table, columns, page_size=1000):
 
         start += page_size
 
-    print(f"Read {len(rows)} rows from {table}")
+    logger.info("Read %d rows from %s", len(rows), table)
     return rows
 
 
@@ -113,9 +118,42 @@ def fetch_locations(client):
 # Transformation
 # --------------------------------------------------
 
+
+def log_invalid_rows(df):
+    """Log rows with invalid required timestamp, coordinate, or AQI values."""
+    valid_dt = (
+        df["dt"].notna()
+        & df["dt"].mod(1).eq(0)
+    )
+    valid_latitude = df["latitude"].between(-90, 90)
+    valid_longitude = df["longitude"].between(-180, 180)
+    valid_aqi = (
+        df["aqi"].notna()
+        & df["aqi"].mod(1).eq(0)
+        & df["aqi"].between(1, 5)
+    )
+
+    invalid_mask = ~(
+        valid_dt
+        & valid_latitude
+        & valid_longitude
+        & valid_aqi
+    )
+    invalid_rows = df.loc[invalid_mask]
+
+    if not invalid_rows.empty:
+        logger.warning(
+            "Found %d rows with invalid required values:\n%s",
+            len(invalid_rows),
+            invalid_rows.to_string(index=False),
+        )
+
+    return invalid_mask
+
+
 def transform(raw_records, locations):
     if not raw_records:
-        print("No raw records to transform.")
+        logger.info("No raw records to transform.")
         return []
 
     if not locations:
@@ -126,10 +164,9 @@ def transform(raw_records, locations):
     # Convert numeric fields and remove invalid required values.
     for column in ["dt", "latitude", "longitude", "aqi"]:
         df[column] = pd.to_numeric(df[column], errors="coerce")
-
-    df = df.dropna(
-        subset=["dt", "latitude", "longitude", "aqi"]
-    ).copy()
+    
+    invalid_mask = log_invalid_rows(df)
+    df = df.loc[~invalid_mask].copy()
 
     # Unix timestamps must be whole seconds.
     valid_dt = df["dt"].mod(1).eq(0)
@@ -182,7 +219,13 @@ def transform(raw_records, locations):
             )
 
         # Validate timezone identifiers.
-        ZoneInfo(location["timezone"])
+        try:
+            ZoneInfo(location["timezone"])
+        except (ZoneInfoNotFoundError, KeyError) as exc:
+            raise ValueError(
+            f"Invalid or missing timezone for location: {location}"
+            ) from exc
+
         location_map[key] = location
 
     # Match every raw observation to a known location.
@@ -242,6 +285,11 @@ def transform(raw_records, locations):
     # Category follows the OpenWeather AQI scale (1–5).
     df["category"] = df["aqi"].map(AQI_CATEGORIES)
 
+    # Derive a 0–100 pollution score from the OpenWeather AQI (1–5).
+    df["pollution_score"] = (
+        ((df["aqi"] - 1) / 4) * 100
+    ).round(2)
+
     # Calculate a rolling average across the latest 3 observations
     # for each location, ordered by observation time.
     df = df.sort_values(
@@ -275,8 +323,8 @@ def transform(raw_records, locations):
         "city", "latitude", "longitude", "timestamp",
         "transformed_at", "aqi",
         *POLLUTANT_COLUMNS,
-        "category", "time_of_day", "day_of_week",
-        "month", "year", "aqi_rolling_avg",
+        "category", "pollution_score", "time_of_day", 
+        "day_of_week", "month", "year", "aqi_rolling_avg",
         "daily_max", "daily_min", "daily_range",
     ]
 
@@ -290,7 +338,7 @@ def transform(raw_records, locations):
 
     records = gold_df.to_dict(orient="records")
 
-    print(f"Transformed {len(records)} records.")
+    logger.info("Transformed %d records.", len(records))
     return records
 
 
@@ -300,7 +348,7 @@ def transform(raw_records, locations):
 
 def load_gold(client, records, batch_size=500):
     if not records:
-        print("No Gold records to write.")
+        logger.info("No Gold records to write.")
         return
 
     for start in range(0, len(records), batch_size):
@@ -314,16 +362,20 @@ def load_gold(client, records, batch_size=500):
             )
             .execute()
         )
-
-        print(
-            f"Upserted {min(start + batch_size, len(records))}"
-            f" of {len(records)} Gold records."
+        
+        logger.info(
+        "Upserted %d of %d Gold records.",
+        min(start + batch_size, len(records)),
+        len(records),
         )
 
-    print("Gold table load completed.")
-
+    logger.info("Gold table load completed.")
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     client = create_supabase_client()
 
     raw_records = fetch_raw_records(client)
