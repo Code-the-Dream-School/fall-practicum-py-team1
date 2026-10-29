@@ -4,7 +4,7 @@ from typing import Literal, Callable
 from dotenv import load_dotenv
 from pipeline.extract.locations import load_locations
 from pipeline.extract.fetch import fetch_air_pollution, validate_payload
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 import logging
 from pipeline.log_run import save_run_record
@@ -100,6 +100,7 @@ def extract(
         load_dotenv()
         api_key = get_api_key()
         locations = load_locations()
+        warnings = []
         if start_ts and end_ts:
             start_ts, end_ts = build_time_window(start_ts, end_ts)
         for loc in locations:
@@ -117,13 +118,14 @@ def extract(
             )
 
             logger = logging.getLogger(__name__)
-            warnings = validator(results)
-            status = "success"
-            if warnings:
-                logger.warning(warnings)
-                error_message = f"Warning captured: {'\n'.join(warnings)}"
+            warning = validator(results)
+            warnings.extend(warning if warning else [])
             raw_records.extend(load_raw(city, results))            
             rows_processed = len(raw_records)
+        status = "success"
+        if warnings:
+            logger.warning(warnings)
+            error_message = f"Warning captured: {'\n'.join(warnings)}"
         return raw_records
     except BaseException as e:
         error_message = str(e)

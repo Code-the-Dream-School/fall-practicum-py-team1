@@ -48,6 +48,7 @@ def make_response(json_data=None, status=200):
 
 def test_extract_current(good_payload, scripted_get, monkeypatch):
     monkeypatch.setenv("OPENWEATHER_API_KEY", "fake")
+    monkeypatch.setattr(pipeline.extract.extract, "save_run_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "pipeline.extract.extract.load_locations",
         lambda: [{"city": "Fremont", "lat": 1, "lon": 2}],
@@ -59,6 +60,7 @@ def test_extract_current(good_payload, scripted_get, monkeypatch):
 
 def test_extract_history(good_history_payload, scripted_get, monkeypatch):
     monkeypatch.setenv("OPENWEATHER_API_KEY", "fake")
+    monkeypatch.setattr(pipeline.extract.extract, "save_run_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "pipeline.extract.extract.load_locations",
         lambda: [{"city": "Fremont", "lat": 1, "lon": 2}],
@@ -78,6 +80,7 @@ def test_extract_history(good_history_payload, scripted_get, monkeypatch):
 ])
 def test_extract_warning_logging(caplog, fake_output, should_log, scripted_get, monkeypatch, good_payload):
     monkeypatch.setenv("OPENWEATHER_API_KEY", "fake")
+    monkeypatch.setattr(pipeline.extract.extract, "save_run_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "pipeline.extract.extract.load_locations",
         lambda: [{"city": "Fremont", "lat": 1, "lon": 2}],
