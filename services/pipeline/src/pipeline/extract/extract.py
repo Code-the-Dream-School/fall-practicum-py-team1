@@ -7,6 +7,7 @@ from pipeline.extract.fetch import fetch_air_pollution, validate_payload
 from dataclasses import dataclass
 
 import logging
+from pipeline.log_run import save_run_record
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,35 +16,19 @@ logging.basicConfig(
 
 @dataclass
 class RawRecord:
-    def __init__(
-            self,
-            city: str,
-            lat: float,
-            lon: float,
-            dt: int,
-            aqi: int | None,
-            co: float | None,
-            no: float | None,
-            no2: float | None,
-            o3: float | None,
-            so2: float | None,
-            pm2_5: float | None,
-            pm10: float | None,
-            nh3: float | None
-    ):
-        self.city = city
-        self.lat = lat
-        self.lon = lon
-        self.dt = dt
-        self.aqi = aqi
-        self.co = co
-        self.no = no
-        self.no2 = no2
-        self.o3 = o3
-        self.so2 = so2
-        self.pm2_5 = pm2_5
-        self.pm10 = pm10
-        self.nh3 = nh3
+    city: str
+    lat: float
+    lon: float
+    dt: int
+    aqi: int | None = None
+    co: float | None = None
+    no: float | None = None
+    no2: float | None = None
+    o3: float | None = None
+    so2: float | None = None
+    pm2_5: float | None = None
+    pm10: float | None = None
+    nh3: float | None = None
 
 def load_raw(city: str, payload: dict) -> list[RawRecord]:
     """
@@ -102,32 +87,61 @@ def extract(
     Returns:
         A list RawRecord dataclass ready for upserting into database.
     """
-    raw_records = []
-    load_dotenv()
-    api_key = get_api_key()
-    locations = load_locations()
-    if start_ts and end_ts:
-        start_ts, end_ts = build_time_window(start_ts, end_ts)
-    for loc in locations:
-        city = loc.get('city')
-        lat = loc.get('lat')
-        lon = loc.get('lon')
-        results = fetch_air_pollution(
-            kind=kind,
-            lat=lat,
-            lon=lon,
-            api_key=api_key,
-            start_ts=start_ts,
-            end_ts=end_ts,
-            **kwarg
-        )
+    # Logger setup
+    logger = logging.getLogger(__name__)
+    run_started = datetime.now(timezone.utc)
+    status = "failed"          
+    error_message = ""
+    rows_processed = 0
 
-        logger = logging.getLogger(__name__)
-        warnings = validator(results)
+    # Main function body
+    try:
+        raw_records = []
+        load_dotenv()
+        api_key = get_api_key()
+        locations = load_locations()
+        warnings = []
+        if start_ts and end_ts:
+            start_ts, end_ts = build_time_window(start_ts, end_ts)
+        for loc in locations:
+            city = loc.get('city')
+            lat = loc.get('lat')
+            lon = loc.get('lon')
+            results = fetch_air_pollution(
+                kind=kind,
+                lat=lat,
+                lon=lon,
+                api_key=api_key,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                **kwarg
+            )
+
+            logger = logging.getLogger(__name__)
+            warning = validator(results)
+            warnings.extend(warning if warning else [])
+            raw_records.extend(load_raw(city, results))            
+            rows_processed = len(raw_records)
+        status = "success"
         if warnings:
             logger.warning(warnings)
-        raw_records.extend(load_raw(city, results))
-    return raw_records
+            error_message = f"Warning captured: {'\n'.join(warnings)}"
+        return raw_records
+    except BaseException as e:
+        error_message = str(e)
+        logger.exception("extract() failed")
+        raise
+    finally:
+        try:
+            save_run_record(
+                started_at=run_started,
+                finished_at=datetime.now(timezone.utc),
+                status=status,
+                records_extracted=rows_processed,
+                error_message=error_message,
+            )
+        except Exception:
+            logger.exception("Could not save run record to database")
 
 if __name__ == "__main__":
     load_dotenv()
@@ -137,3 +151,10 @@ if __name__ == "__main__":
     raw_records = extract('current')
     for rec in raw_records:
         print(vars(rec))
+
+    print("=" * 25)
+    print("Test historic call")
+    print("=" * 25)
+    start_ts, end_ts = datetime.strptime("2026-01-01", "%Y-%m-%d").replace(tzinfo=timezone.utc), datetime.strptime("2026-01-31", "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    raw_records = extract('history', start_ts, end_ts)
+    print(f"Historic record from {start_ts} to {end_ts}, {len(raw_records)} records extracted.")
