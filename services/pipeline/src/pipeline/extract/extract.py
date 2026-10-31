@@ -9,6 +9,9 @@ from dataclasses import dataclass
 import logging
 from pipeline.log_run import save_run_record
 
+import os
+from supabase import create_client, Client
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
@@ -31,17 +34,6 @@ class RawRecord:
     nh3: float | None = None
 
 def load_raw(city: str, payload: dict) -> list[RawRecord]:
-    """
-    Load the given payload from a single city into RawRecord lists ready for upserting to database.
-
-    Args:
-        city: Name of the city, not a primary key.
-        payload: The parsed JSON response from `fetch_air_pollution()`.
-        warnings: List of warnings from `fetch_air_pollution()`, will depreciate in the next iteration.
-
-    Returns:
-        A list RawRecord dataclass ready for upserting into database.
-    """
     raw_records = []
     coord = payload.get('coord', {})
     ls = payload.get('list', {})
@@ -75,18 +67,6 @@ def extract(
         validator: Callable[[dict], list[str]]=validate_payload, 
         **kwarg
         ) -> list[RawRecord]:
-    """
-    Full extract pipeline to fetch response from API to uploadable RawRecord class.
-
-    Args:
-        kind: 'current' or 'history' for different air pollution data.
-        start_ts: Beginning date of parsing (datatime with timezone info) if 'history' is selected.
-        end_ts: Ending date of parsing (datatime with timezone info) if 'history' is selected.
-        **kwarg: Keyword args for `fetch_air_pollution()` function, see docstring for `fetch_air_pollution()` for more details.
-
-    Returns:
-        A list RawRecord dataclass ready for upserting into database.
-    """
     # Logger setup
     logger = logging.getLogger(__name__)
     run_started = datetime.now(timezone.utc)
@@ -101,27 +81,92 @@ def extract(
         api_key = get_api_key()
         locations = load_locations()
         warnings = []
+        
+        # Initialize Supabase client
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_KEY")
+        if url and key:
+            supabase: Client = create_client(url, key)
+        else:
+            supabase = None
+            logger.warning("Supabase credentials not found in environment.")
+
         if start_ts and end_ts:
             start_ts, end_ts = build_time_window(start_ts, end_ts)
+            
         for loc in locations:
             city = loc.get('city')
             lat = loc.get('lat')
             lon = loc.get('lon')
-            results = fetch_air_pollution(
-                kind=kind,
-                lat=lat,
-                lon=lon,
-                api_key=api_key,
-                start_ts=start_ts,
-                end_ts=end_ts,
-                **kwarg
-            )
+            
+            # Format timestamps for cache database
+            if isinstance(start_ts, int):
+                cache_start = datetime.fromtimestamp(start_ts, tz=timezone.utc).isoformat()
+            elif start_ts:
+                cache_start = start_ts.isoformat()
+            else:
+                cache_start = "1970-01-01T00:00:00+00:00"
+                
+            if isinstance(end_ts, int):
+                cache_end = datetime.fromtimestamp(end_ts, tz=timezone.utc).isoformat()
+            elif end_ts:
+                cache_end = end_ts.isoformat()
+            else:
+                cache_end = "2099-12-31T23:59:59+00:00"
+            
+            results = None
+            
+            # 1. Check the cache first
+            if supabase:
+                try:
+                    cache_response = supabase.table("raw_air_quality_cache").select("raw_response") \
+                        .eq("city", city) \
+                        .eq("latitude", lat) \
+                        .eq("longitude", lon) \
+                        .eq("start_time", cache_start) \
+                        .eq("end_time", cache_end) \
+                        .execute()
+                    
+                    if cache_response.data:
+                        logger.info(f"CACHE HIT: Returning cached data for {city}")
+                        results = cache_response.data[0]["raw_response"]
+                except Exception as e:
+                    logger.warning(f"Cache check failed, proceeding to API call. Error: {e}")
+            
+            # 2. Cache Miss: Call the OpenWeather API
+            if not results:
+                logger.info(f"CACHE MISS: Fetching live API data for {city}")
+                results = fetch_air_pollution(
+                    kind=kind,
+                    lat=lat,
+                    lon=lon,
+                    api_key=api_key,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    **kwarg
+                )
+                
+                # 3. Store the new API response in the cache
+                if supabase:
+                    try:
+                        cache_payload = {
+                            "city": city,
+                            "latitude": lat,
+                            "longitude": lon,
+                            "start_time": cache_start,
+                            "end_time": cache_end,
+                            "raw_response": results
+                        }
+                        supabase.table("raw_air_quality_cache").insert(cache_payload).execute()
+                        logger.info(f"Successfully cached new data for {city}")
+                    except Exception as e:
+                         logger.warning(f"Failed to save to cache for {city}: {e}")
 
-            logger = logging.getLogger(__name__)
             warning = validator(results)
             warnings.extend(warning if warning else [])
             raw_records.extend(load_raw(city, results))            
             rows_processed = len(raw_records)
+            
         status = "success"
         if warnings:
             logger.warning(warnings)
