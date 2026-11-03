@@ -30,6 +30,12 @@ RAW_COLUMNS = [
     "pm2_5", "pm10", "nh3",
 ]
 
+GOLD_COLUMNS = [
+    "city", "latitude", "longitude", "timestamp", "transformed_at", "aqi", "co", "no",
+    "no2", "o3", "so2", "pm2_5", "pm10", "nh3", "category", "time_of_day",
+    "day_of_week", "month", "year", "aqi_rolling_avg", "daily_max", "daily_min", "daily_range", "pollution_score",
+]
+
 POLLUTANT_COLUMNS = [
     "co", "no", "no2", "o3", "so2",
     "pm2_5", "pm10", "nh3",
