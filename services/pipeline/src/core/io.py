@@ -1,6 +1,6 @@
 import os
 import logging
-from core.config import RAW_TABLE, RAW_COLUMNS, LOCATIONS_TABLE
+from core.config import RAW_TABLE, RAW_COLUMNS, GOLD_TABLE, GOLD_COLUMNS, LOCATIONS_TABLE
 
 from supabase import create_client, Client
 logger = logging.getLogger(__name__)
@@ -85,6 +85,25 @@ def fetch_raw_records(client: Client, page_size: int=1000) -> list[tuple]:
         client,
         RAW_TABLE,
         ", ".join(RAW_COLUMNS),
+        page_size=page_size
+    )
+
+def fetch_gold_records(client: Client, page_size: int=1000) -> list[tuple]:
+    """Fetch every row from the gold table using pagination.
+
+    Args:
+        client: An initialized Supabase `Client` used to run the queries.
+        page_size: Number of rows to request per batch. Should not exceed
+            the Supabase row limit (1,000 by default).
+
+    Returns:
+        A list of tuples, one per row, with values ordered to GOLD_COLUMNS.
+        The list is empty if the table has no rows.
+    """
+    return fetch_all_rows(
+        client,
+        GOLD_TABLE,
+        ", ".join(GOLD_COLUMNS),
         page_size=page_size
     )
 
