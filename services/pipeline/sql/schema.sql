@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS public.air_pollution_raw (
     dt BIGINT NOT NULL,
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
-    aqi SMALLINT,
+    aqi FLOAT,
     co NUMERIC,
     no NUMERIC,
     no2 NUMERIC,

@@ -65,7 +65,7 @@ Column	        PostgreSQL_type	                Required?	                       
 dt	                BIGINT	                        Yes	                Observation timestamp as Unix epoch seconds.
 latitude    	DOUBLE PRECISION	                Yes	                            Observation latitude.
 longitude	    DOUBLE PRECISION	                Yes	                            Observation longitude.
-aqi	                SMALLINT	                    No	                Air Quality Index value returned by the API.
+aqi	                FLOAT	                        No	                   Air Quality Index value returned by the API.
 co	                NUMERIC	                        No	                        Carbon monoxide measurement.
 no	                NUMERIC                        	No	                        Nitrogen monoxide measurement.
 no2             	NUMERIC	                        No	                        Nitrogen dioxide measurement.
