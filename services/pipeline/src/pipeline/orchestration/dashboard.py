@@ -66,7 +66,7 @@ def make_dashboard():
     Returns:
         None. Displays the dashboard using Streamlit.
 
-    To Run : streamlit run services/pipeline/../../../dashboard.py
+    To Run : streamlit run services/pipeline/src/pipeline/orchestration/dashboard.py (Path can vary based on your project structure)
             then follow the link in the terminal to view the dashboard in your browser.
             e.g.
             Local URL: http://localhost:8501
