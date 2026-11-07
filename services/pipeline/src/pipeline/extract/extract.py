@@ -89,7 +89,7 @@ def extract(
             supabase: Client = create_client(url, key)
         else:
             supabase = None
-            logger.warning("Supabase credentials not found in environment.")
+            logger.info("Supabase credentials not found in environment.")
 
         if start_ts and end_ts:
             start_ts, end_ts = build_time_window(start_ts, end_ts)
