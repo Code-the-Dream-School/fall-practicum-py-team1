@@ -65,7 +65,7 @@ Column	        PostgreSQL_type	                Required?	                       
 dt	                BIGINT	                        Yes	                Observation timestamp as Unix epoch seconds.
 latitude    	DOUBLE PRECISION	                Yes	                            Observation latitude.
 longitude	    DOUBLE PRECISION	                Yes	                            Observation longitude.
-aqi	                SMALLINT	                    No	                Air Quality Index value returned by the API.
+aqi	            DOUBLE PRECISION	                No	                   Air Quality Index value returned by the API.
 co	                NUMERIC	                        No	                        Carbon monoxide measurement.
 no	                NUMERIC                        	No	                        Nitrogen monoxide measurement.
 no2             	NUMERIC	                        No	                        Nitrogen dioxide measurement.
@@ -131,7 +131,7 @@ aqi_rolling_avg	DOUBLE PRECISION                             No	                
 daily_max	        INTEGER                                  No                             	Daily maximum AQI.
 daily_min       	INTEGER                                  No	                                Daily minimum AQI.
 daily_range	        INTEGER                                  No             	Difference between daily maximum and minimum AQI.
-
+pollution_score     NUMERIC                                  NO                       Normalized air pollution indicator
 
 
 Keys and constraints
