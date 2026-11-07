@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS public.air_pollution_gold (
     aqi_rolling_avg DOUBLE PRECISION,
     daily_max INTEGER,
     daily_min INTEGER,
-    daily_range INTEGER
+    daily_range INTEGER,
+    pollution_score NUMERIC
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_air_pollution_gold_location_timestamp
@@ -80,4 +81,36 @@ CREATE TABLE IF NOT EXISTS public.pipeline_runs (
         CHECK (
             finished_at IS NULL OR finished_at >= started_at
         )
+);
+
+--  LLM enrichment results
+
+CREATE TABLE IF NOT EXISTS public.air_pollution_enrichment (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    "timestamp" TIMESTAMPTZ NOT NULL,
+
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+
+    result JSONB,
+
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT air_pollution_enrichment_status_check
+        CHECK (status IN ('pending', 'success', 'failed')),
+
+    CONSTRAINT air_pollution_enrichment_attempt_count_check
+        CHECK (attempt_count >= 0),
+
+    CONSTRAINT air_pollution_enrichment_unique_record
+        UNIQUE (latitude, longitude, "timestamp", prompt_version)
 );
