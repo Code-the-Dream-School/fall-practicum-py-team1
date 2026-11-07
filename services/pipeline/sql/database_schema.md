@@ -131,7 +131,7 @@ aqi_rolling_avg	DOUBLE PRECISION                             No	                
 daily_max	        INTEGER                                  No                             	Daily maximum AQI.
 daily_min       	INTEGER                                  No	                                Daily minimum AQI.
 daily_range	        INTEGER                                  No             	Difference between daily maximum and minimum AQI.
-
+pollution_score     NUMERIC                                  NO                       Normalized air pollution indicator
 
 
 Keys and constraints
