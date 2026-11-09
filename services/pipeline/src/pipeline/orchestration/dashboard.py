@@ -21,15 +21,73 @@ def get_gold_data():
 
     client = create_client(supabase_url, supabase_key)
 
-    response = client.table("air_pollution_gold").select("*").execute()
-    data = response.data
+    # Store all retrieved records here.
+    all_data = []
 
-    if not data:
+    # Supabase range uses zero-based, inclusive indexes.
+    batch_size = 1000
+    start = 0
+
+    while True:
+
+        response = (
+            client.table("air_pollution_gold")
+            .select("*")
+            .range(start, start + batch_size - 1)
+            .execute()
+        )
+
+        batch = response.data or []
+
+        # Add the current batch to the complete dataset.
+        all_data.extend(batch)
+
+        # Stop when the returned batch contains fewer records
+        # than the requested batch size.
+        if len(batch) < batch_size:
+            break
+
+        # Move to the next batch.
+        start += batch_size
+
+    if not all_data:
         st.warning("No data found in the gold table.")
-        return pd.DataFrame()  # Return an empty DataFrame
+        return pd.DataFrame()
 
-    df = pd.DataFrame(data)
+    return pd.DataFrame(all_data)
+
+# ---------------------------------------------------------
+# DATE FILTERING FUNCTION
+# ---------------------------------------------------------
+
+def filter_by_date_range(df, date_range):
+    """Filter records using the selected date range."""
+
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+
+        start_date, end_date = date_range
+
+        df = df[
+            (df["timestamp"].dt.date >= start_date) &
+            (df["timestamp"].dt.date <= end_date)
+        ]
+
     return df
+
+
+def calculate_dashboard_metrics(df):
+    """Calculate the main dashboard performance metrics."""
+
+    return {
+        "average_aqi": df["aqi"].mean(),
+        "maximum_aqi": df["aqi"].max(),
+        "average_pm25": df["pm2_5"].mean(),
+        "average_pm10": df["pm10"].mean(),
+        "average_o3": df["o3"].mean(),
+        "average_pollution_score": df["pollution_score"].mean(),
+        "total_records": len(df),
+        "monitored_cities": df["city"].nunique()
+    }
 
 
 
@@ -212,16 +270,7 @@ def make_dashboard():
     )
 
     # Apply the selected date range to filter the dataset.
-    if isinstance(pd.date_range, tuple) and len(date_range) == 2:
-
-        # Extract the selected start and end dates.
-        start_date, end_date = date_range
-
-        # Keep only records within the selected date range.
-        df = df[
-            (df["timestamp"].dt.date >= start_date) &
-            (df["timestamp"].dt.date <= end_date)
-        ]
+    df = filter_by_date_range(df, date_range)
 
     # Check whether records remain after filtering.
     if df.empty:
