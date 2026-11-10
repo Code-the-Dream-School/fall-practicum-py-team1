@@ -17,6 +17,12 @@ DAY_OF_WEEK = {
     k: v for v, k in enumerate(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"])
 }
 
+USEFUL_FEATURES = [
+    'city', 'latitude', 'longitude', 'timestamp', 'aqi', 
+    'co', 'no', 'no2', 'o3', 'so2', 'pm2_5', 'pm10', 'nh3',  
+    'time_of_day', 'day_of_week', 'year',
+]
+
 def basic_encoding(df: pd.DataFrame) -> pd.DataFrame:
     df["time_of_day"] = df["time_of_day"].replace(TIME_OF_DAY).astype(int)
     df["day_of_week"] = df["day_of_week"].replace(DAY_OF_WEEK).astype(int)
