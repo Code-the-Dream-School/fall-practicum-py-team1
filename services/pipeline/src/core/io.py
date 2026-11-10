@@ -28,7 +28,7 @@ def create_supabase_client() -> Client:
     return create_client(url, key)
 
 
-def fetch_all_rows(client: Client, table: str, columns: str="*", page_size=1000) -> list[tuple]:
+def fetch_all_rows(client: Client, table: str, columns: str="*", page_size=1000) -> list[dict]:
     """Fetch every row from a Supabase table using pagination.
 
     Supabase queries have a default 1,000-row limit. Pagination ensures
