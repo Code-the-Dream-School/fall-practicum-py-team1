@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 import os
 import logging
+import numpy as np
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -129,7 +130,6 @@ def log_invalid_rows(df):
     valid_longitude = df["longitude"].between(-180, 180)
     valid_aqi = (
         df["aqi"].notna()
-        & df["aqi"].mod(1).eq(0)
         & df["aqi"].between(1, 5)
     )
 
@@ -164,6 +164,9 @@ def transform(raw_records, locations):
     # Convert numeric fields and remove invalid required values.
     for column in ["dt", "latitude", "longitude", "aqi"]:
         df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    # Normalize AQI using conventional rounding (.5 rounds up).
+    df["aqi"] = np.floor(df["aqi"] + 0.5)
     
     invalid_mask = log_invalid_rows(df)
     df = df.loc[~invalid_mask].copy()
