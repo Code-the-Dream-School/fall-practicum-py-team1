@@ -1,6 +1,6 @@
 {
   "pollutant": "so2",
-  "saved_at": "2026-11-09T23:34:55.886141+00:00",
+  "saved_at": "2026-11-11T00:49:44.174334+00:00",
   "lightgbm_version": "4.7.0",
   "features": [
     "city",
@@ -92,24 +92,24 @@
   "params": {
     "boosting_type": "gbdt",
     "class_weight": null,
-    "colsample_bytree": 1.0,
+    "colsample_bytree": 0.8010716092915446,
     "importance_type": "split",
-    "learning_rate": 0.1,
+    "learning_rate": 0.02029575024999787,
     "max_depth": -1,
-    "min_child_samples": 20,
+    "min_child_samples": 10,
     "min_child_weight": 0.001,
     "min_split_gain": 0.0,
-    "n_estimators": 100,
+    "n_estimators": 502,
     "n_jobs": null,
-    "num_leaves": 31,
+    "num_leaves": 16,
     "objective": null,
     "random_state": null,
     "reg_alpha": 0.0,
     "reg_lambda": 0.0,
-    "subsample": 1.0,
+    "subsample": 0.8123738333268545,
     "subsample_for_bin": 200000,
-    "subsample_freq": 0
+    "subsample_freq": 1,
+    "verbose": -1
   },
-  "best_iteration": 0,
   "n_train_rows": 78666
 }
