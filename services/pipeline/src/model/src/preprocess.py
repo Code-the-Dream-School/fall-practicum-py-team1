@@ -59,13 +59,17 @@ def add_lagged_data(df: pd.DataFrame) -> pd.DataFrame:
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values(["city", "timestamp"]).reset_index(drop=True)
 
-    df = (
-        df.set_index("timestamp")
-        .groupby("city")
-        .resample("1h") # Fill in missing hours
-        .asfreq() # By NaN
-        .reset_index()
-    )
+    try:
+        df = (
+            df.set_index("timestamp")
+            .groupby("city")
+            .resample("1h") # Fill in missing hours
+            .asfreq() # By NaN
+            .reset_index()
+        )
+    except ValueError as e:
+        logger.error(f"Same timestamp appears more than once on a city, double check the data.")
+        raise
 
     g = df.groupby("city")
 
@@ -83,6 +87,10 @@ def add_lagged_data(df: pd.DataFrame) -> pd.DataFrame:
     # Create target values: 24 hours into the future
     for col in POLLUTANT_COLUMNS:
         df[f"{col}_target"] = g[col].shift(-24)
+
+    if df.shape[0] == 0:
+        logger.exception(f"Resulting df from `add_lagged_data` has 0 rows, check if a lot of consecutive rows are missing.")
+        raise ValueError(f"Resulting df from `add_lagged_data` has 0 rows, check if a lot of consecutive rows are missing.")
 
     return df.dropna()
 
