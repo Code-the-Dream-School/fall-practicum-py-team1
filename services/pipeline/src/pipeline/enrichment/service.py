@@ -4,14 +4,17 @@ from datetime import datetime, timezone
 
 from supabase import create_client
 
-from pipeline.enrichment.client import AirQualityEnricher
+from pipeline.enrichment.client import (
+    AirQualityEnricher,
+    EnrichmentConfigurationError,
+)
 from pipeline.enrichment.config import OPENAI_MODEL, PROMPT_VERSION
-
 
 logger = logging.getLogger(__name__)
 
 GOLD_TABLE = "air_pollution_gold"
 ENRICHMENT_TABLE = "air_pollution_enrichment"
+MAX_CONSECUTIVE_FAILURES = 5
 
 GOLD_COLUMNS = (
     "city,latitude,longitude,timestamp,aqi,category,"
@@ -178,6 +181,7 @@ def run_enrichment(
     }
 
     processed_keys = set()
+    consecutive_failures = 0
 
     for record in gold_records:
         key = build_record_key(record, prompt_version)
@@ -210,6 +214,13 @@ def run_enrichment(
 
         try:
             result = enricher.enrich(record)
+
+        except EnrichmentConfigurationError:
+            logger.exception(
+                "Enrichment configuration error. Stopping batch."
+            )
+            raise
+
         except Exception as exc:
             error_message = str(exc)[:2000]
 
@@ -228,7 +239,17 @@ def run_enrichment(
                 "Enrichment failed for timestamp %s",
                 record["timestamp"],
             )
+
             summary["failed"] += 1
+            consecutive_failures += 1
+
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                logger.error(
+                    "Stopping enrichment after %d consecutive failures",
+                    consecutive_failures,
+                )
+                break
+
             continue
 
         save_enrichment(
@@ -242,6 +263,7 @@ def run_enrichment(
         )
 
         summary["succeeded"] += 1
+        consecutive_failures = 0
 
     logger.info("Enrichment summary: %s", summary)
     return summary

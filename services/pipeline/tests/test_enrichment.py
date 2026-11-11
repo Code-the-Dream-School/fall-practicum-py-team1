@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pipeline.enrichment.client import EnrichmentConfigurationError
 from pipeline.enrichment.service import run_enrichment
 
 
@@ -258,3 +259,100 @@ def test_duplicate_gold_observation_is_processed_once(
 
     assert mock_enricher.enrich.call_count == 1
     assert len(database.tables["air_pollution_enrichment"]) == 1
+
+
+def test_stops_after_five_consecutive_failures(
+    gold_record,
+    mock_enricher,
+):
+    records = [
+        {
+            **gold_record,
+            "latitude": 38.6 + i * 0.001,
+            "timestamp": f"2026-10-01T{i:02d}:00:00+00:00",
+        }
+        for i in range(6)
+    ]
+
+    database = FakeSupabase(records)
+    mock_enricher.enrich.side_effect = [
+        ValueError("Temporary LLM error") for _ in range(6)
+    ]
+
+    result = run_enrichment(
+        supabase_client=database,
+        enricher=mock_enricher,
+    )
+
+    assert result["failed"] == 5
+    assert result["succeeded"] == 0
+    assert mock_enricher.enrich.call_count == 5
+    assert len(database.tables["air_pollution_enrichment"]) == 5
+
+
+def test_success_resets_consecutive_failure_counter(
+    gold_record,
+    mock_enricher,
+):
+    records = [
+        {
+            **gold_record,
+            "latitude": 38.6 + i * 0.001,
+            "timestamp": f"2026-10-01T{i:02d}:00:00+00:00",
+        }
+        for i in range(10)
+    ]
+
+    success_result = {
+        "summary": "Air quality is fair.",
+        "pollutant_analysis": "Pollutant levels are relatively low.",
+        "recommendation": "Normal outdoor activities are reasonable.",
+    }
+
+    database = FakeSupabase(records)
+
+    mock_enricher.enrich.side_effect = (
+        [ValueError("Temporary LLM error") for _ in range(4)]
+        + [success_result]
+        + [ValueError("Temporary LLM error") for _ in range(4)]
+        + [success_result]
+    )
+
+    result = run_enrichment(
+        supabase_client=database,
+        enricher=mock_enricher,
+    )
+
+    assert result["failed"] == 8
+    assert result["succeeded"] == 2
+    assert mock_enricher.enrich.call_count == 10
+
+
+def test_configuration_error_stops_batch(
+    gold_record,
+    mock_enricher,
+):
+    second_record = {
+        **gold_record,
+        "latitude": 38.6,
+        "longitude": -121.3,
+        "timestamp": "2026-10-01T13:00:00+00:00",
+    }
+
+    database = FakeSupabase([gold_record, second_record])
+
+    mock_enricher.enrich.side_effect = EnrichmentConfigurationError(
+        "OPENAI_API_KEY must be configured."
+    )
+
+    with pytest.raises(EnrichmentConfigurationError):
+        run_enrichment(
+            supabase_client=database,
+            enricher=mock_enricher,
+        )
+
+    assert mock_enricher.enrich.call_count == 1
+
+    saved_records = database.tables["air_pollution_enrichment"]
+    assert len(saved_records) == 1
+    assert saved_records[0]["status"] == "pending"

@@ -1,6 +1,7 @@
 import json
+import os
 
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError, PermissionDeniedError
 
 from pipeline.enrichment.config import OPENAI_MODEL
 from pipeline.enrichment.prompts import SYSTEM_PROMPT, build_user_prompt
@@ -13,26 +14,46 @@ REQUIRED_FIELDS = {
 }
 
 
+class EnrichmentConfigurationError(Exception):
+    """Raised when OpenAI configuration or authentication is invalid."""
+
+
 class AirQualityEnricher:
     """Generate structured air-quality interpretations using OpenAI."""
 
     def __init__(self, client=None, model=OPENAI_MODEL):
-        self.client = client or OpenAI()
+        if client is None:
+            api_key = os.getenv("OPENAI_API_KEY")
+
+            if not api_key or not api_key.strip():
+                raise EnrichmentConfigurationError(
+                    "OPENAI_API_KEY must be configured."
+                )
+
+            self.client = OpenAI(api_key=api_key.strip())
+        else:
+            self.client = client
+
         self.model = model
 
     def enrich(self, record):
         """Enrich one Gold observation and return a validated dictionary."""
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(record)},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-            max_tokens=400,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": build_user_prompt(record)},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+                max_tokens=400,
+            )
+        except (AuthenticationError, PermissionDeniedError) as exc:
+            raise EnrichmentConfigurationError(
+                "OpenAI authentication or permission error."
+            ) from exc
 
         content = response.choices[0].message.content
 
