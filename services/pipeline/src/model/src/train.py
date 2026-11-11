@@ -2,7 +2,8 @@ import pandas as pd
 import logging
 import lightgbm as lgb
 import json
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
+from scipy.stats import randint, uniform
 from sklearn.metrics import root_mean_squared_error as rmse
 from lightgbm import LGBMRegressor
 from datetime import datetime, timezone
@@ -20,6 +21,15 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
+PARAM_DICT = {
+    "n_estimators": randint(100, 800),
+    "learning_rate": uniform(0.01, 0.2),
+    "num_leaves": randint(15, 127),
+    "min_child_samples": randint(10, 100),
+    "subsample": uniform(0.6, 0.4),
+    "colsample_bytree": uniform(0.6, 0.4),
+}
+
 def load_train() -> pd.DataFrame:
     client = create_supabase_client()
     df = load_gold(client)
@@ -28,10 +38,23 @@ def load_train() -> pd.DataFrame:
 def baseline_model(df: pd.DataFrame, target: str):
     return df[target.rsplit("_", 1)[0]]
 
-def model_train(df: pd.DataFrame, target: str) -> pd.DataFrame:
+def model_train(df: pd.DataFrame, target: str, cv: int=5, param_dict: dict=PARAM_DICT) -> pd.DataFrame:
+    tscv = TimeSeriesSplit(n_splits=5)
+
+    search = RandomizedSearchCV(
+        LGBMRegressor(subsample_freq=1, verbose=-1),
+        param_distributions=param_dict,
+        n_iter=30,
+        cv=tscv,
+        scoring="neg_root_mean_squared_error",
+        random_state=42,
+        n_jobs=-1,
+        refit=True,
+    )
+
     if "target" not in target:
-        logger.error(f"Incorret target name {target}, 'target' should be in the string")
-        raise KeyError(f"Incorret target name {target}, 'target' should be in the string")
+        logger.error(f"Incorrect target name {target}, 'target' should be in the string")
+        raise KeyError(f"Incorrect target name {target}, 'target' should be in the string")
     df = df.copy()
     df = df.drop([t for t in df.columns if ("target" in t) and t != target], axis=1)
     df = df.sort_values("timestamp")
@@ -42,10 +65,11 @@ def model_train(df: pd.DataFrame, target: str) -> pd.DataFrame:
 
     X_train, y_train = train.drop(target, axis=1), train[target]
     X_test, y_test = test.drop(target, axis=1), test[target]
-    model = LGBMRegressor()
     logger.info("Training started...")
-    model.fit(X_train, y_train)
-    logger.info("Training completed")
+    search.fit(X_train, y_train)
+    logger.info(f"Training completed, best CV RMSE: {-search.best_score_:.2f}, params: {search.best_params_}")
+
+    model = search.best_estimator_
     y_train_hat = model.predict(X_train)
     logger.info(f"Training error: {round(rmse(y_train, y_train_hat), 2)}, baseline training error: {round(rmse(y_train, baseline_model(train, target)), 2)}")
     y_test_hat = model.predict(X_test)
