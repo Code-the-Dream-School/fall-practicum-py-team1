@@ -34,6 +34,17 @@ class RawRecord:
     nh3: float | None = None
 
 def load_raw(city: str, payload: dict) -> list[RawRecord]:
+    """
+    Load the given payload from a single city into RawRecord lists ready for upserting to database.
+
+    Args:
+        city: Name of the city, not a primary key.
+        payload: The parsed JSON response from `fetch_air_pollution()`.
+        warnings: List of warnings from `fetch_air_pollution()`, will depreciate in the next iteration.
+
+    Returns:
+        A list RawRecord dataclass ready for upserting into database.
+    """
     raw_records = []
     coord = payload.get('coord', {})
     ls = payload.get('list', {})
@@ -67,6 +78,19 @@ def extract(
         validator: Callable[[dict], list[str]]=validate_payload, 
         **kwarg
         ) -> list[RawRecord]:
+    """
+    Full extract pipeline to fetch response from API to uploadable RawRecord class.
+    Checks the Supabase 'raw_air_quality_cache' to prevent redundant OpenWeather API calls.
+
+    Args:
+        kind: 'current' or 'history' for different air pollution data.
+        start_ts: Beginning date of parsing (datetime with timezone info) if 'history' is selected.
+        end_ts: Ending date of parsing (datetime with timezone info) if 'history' is selected.
+        **kwarg: Keyword args for `fetch_air_pollution()` function, see docstring for `fetch_air_pollution()` for more details.
+
+    Returns:
+        A list RawRecord dataclass ready for upserting into database.
+    """
     # Logger setup
     logger = logging.getLogger(__name__)
     run_started = datetime.now(timezone.utc)
@@ -116,15 +140,15 @@ def extract(
             
             results = None
             
-            # 1. Check the cache first
+            # 1. Check the cache first (using lte/gte for timeframe overlap)
             if supabase:
                 try:
                     cache_response = supabase.table("raw_air_quality_cache").select("raw_response") \
                         .eq("city", city) \
                         .eq("latitude", lat) \
                         .eq("longitude", lon) \
-                        .eq("start_time", cache_start) \
-                        .eq("end_time", cache_end) \
+                        .lte("start_time", cache_start) \
+                        .gte("end_time", cache_end) \
                         .execute()
                     
                     if cache_response.data:
