@@ -8,6 +8,38 @@ import pandas as pd
 import pytest
 
 
+"""
+TEST SUITE: AIR POLLUTION DASHBOARD
+
+This test file verifies the main functionality of the
+City Air Tracker dashboard.
+
+Tests cover:
+
+1. Gold Layer data retrieval from Supabase.
+2. Handling empty database responses.
+3. Data pagination when retrieving large datasets.
+4. Date range filtering and boundary conditions.
+5. Dashboard KPI and pollution metric calculations.
+6. Handling missing and invalid numeric values.
+7. Daily enrichment matching using city coordinates and dates.
+8. Selecting the enrichment record closest to 12 PM UTC.
+9. Preferring later timestamps when time differences are equal.
+10. Handling missing, failed, or invalid enrichment records.
+11. Ensuring enrichment records only match the correct day.
+12. Ensuring original DataFrames are not modified.
+
+All database interactions are mocked to avoid
+depending on a live Supabase connection.
+
+Run tests using:
+pytest services/pipeline/tests/test_dashboard.py -v
+"""
+
+
+
+
+
 # ---------------------------------------------------------
 # IMPORT PROJECT MODULE
 # ---------------------------------------------------------
@@ -78,6 +110,26 @@ def sample_gold_data():
             "pollution_score": 40
         }
     ]
+
+
+
+# ---------------------------------------------------------
+# FIXTURE: CLEAR STREAMLIT CACHE BEFORE EACH TEST
+# ---------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def clear_streamlit_cache():
+    """Clear Streamlit cached data before every test."""
+
+    dashboard.get_gold_data.clear()
+    dashboard.get_air_pollution_enrichment.clear()
+    dashboard.match_daily_enrichment.clear()
+
+    yield
+
+    dashboard.get_gold_data.clear()
+    dashboard.get_air_pollution_enrichment.clear()
+    dashboard.match_daily_enrichment.clear()
 
 
 # ---------------------------------------------------------
@@ -441,3 +493,405 @@ def test_dashboard_metrics_invalid_values(sample_gold_data):
     assert result["average_aqi"] == 60
     assert result["maximum_aqi"] == 60
 
+
+# ---------------------------------------------------------
+# TEST 11–18: DAILY ENRICHMENT MATCHING
+# ---------------------------------------------------------
+
+@pytest.fixture
+def sample_enrichment_data():
+    """Provide sample successful and unsuccessful AI enrichment records."""
+
+    return pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T10:00:00Z",
+            "status": "success",
+            "result": {
+                "summary": "Good air quality.",
+                "recommendation": "Outdoor activities are suitable.",
+                "pollutant_analysis": "Pollutant levels are low."
+            }
+        },
+        {
+            "latitude": 48.8566,
+            "longitude": 2.3522,
+            "timestamp": "2026-11-02T11:30:00Z",
+            "status": "success",
+            "result": {
+                "summary": "Moderate air quality.",
+                "recommendation": "Limit prolonged outdoor activity.",
+                "pollutant_analysis": "PM2.5 levels are elevated."
+            }
+        },
+        {
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "timestamp": "2026-11-01T12:00:00Z",
+            "status": "failed",
+            "result": None
+        }
+    ])
+
+
+@pytest.fixture
+def sample_trend_data():
+    """Provide daily AQI records for enrichment matching."""
+
+    return pd.DataFrame([
+        {
+            "city": "London",
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T00:00:00Z",
+            "aqi": 45
+        },
+        {
+            "city": "Paris",
+            "latitude": 48.8566,
+            "longitude": 2.3522,
+            "timestamp": "2026-11-02T00:00:00Z",
+            "aqi": 60
+        },
+        {
+            "city": "New York",
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "timestamp": "2026-11-01T00:00:00Z",
+            "aqi": 55
+        }
+    ])
+
+
+# ---------------------------------------------------------
+# TEST 11: SUCCESSFUL ENRICHMENT MATCHING
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_success(
+    sample_trend_data,
+    sample_enrichment_data
+):
+    """Test successful matching of enrichment records."""
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        sample_enrichment_data
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["enrichment_status"] == "Enrichment available"
+    assert london["summary"] == "Good air quality."
+    assert london["recommendation"] == (
+        "Outdoor activities are suitable."
+    )
+    assert london["pollutant_analysis"] == (
+        "Pollutant levels are low."
+    )
+
+
+# ---------------------------------------------------------
+# TEST 12: NO ENRICHMENT RECORD AVAILABLE
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_no_records(
+    sample_trend_data
+):
+    """Test that missing enrichment is reported correctly."""
+
+    empty_enrichment = pd.DataFrame(columns=[
+        "latitude",
+        "longitude",
+        "timestamp",
+        "status",
+        "result"
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        empty_enrichment
+    )
+
+    assert (
+        result["enrichment_status"]
+        == "No enrichment records available"
+    ).all()
+
+    assert result["summary"].isna().all()
+    assert result["recommendation"].isna().all()
+    assert result["pollutant_analysis"].isna().all()
+
+
+# ---------------------------------------------------------
+# TEST 13: FAILED ENRICHMENT RECORDS ARE IGNORED
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_ignores_failed_records(
+    sample_trend_data
+):
+    """Test that failed enrichment records are not selected."""
+
+    failed_data = pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T12:00:00Z",
+            "status": "failed",
+            "result": None
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        failed_data
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["enrichment_status"] == (
+        "No enrichment records available"
+    )
+
+    assert pd.isna(london["summary"])
+
+
+# ---------------------------------------------------------
+# TEST 14: CLOSEST TIMESTAMP TO NOON
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_closest_to_noon(
+    sample_trend_data
+):
+    """Test that the record closest to 12 PM UTC is selected."""
+
+    enrichment = pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T09:00:00Z",
+            "status": "success",
+            "result": {"summary": "Morning record"}
+        },
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T11:50:00Z",
+            "status": "success",
+            "result": {"summary": "Closest record"}
+        },
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T15:00:00Z",
+            "status": "success",
+            "result": {"summary": "Afternoon record"}
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        enrichment
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["summary"] == "Closest record"
+
+
+# ---------------------------------------------------------
+# TEST 15: LATER TIMESTAMP WINS WHEN EQUALLY CLOSE
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_later_timestamp_wins(
+    sample_trend_data
+):
+    """Test that later timestamp wins when distances are equal."""
+
+    enrichment = pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T11:00:00Z",
+            "status": "success",
+            "result": {"summary": "Earlier record"}
+        },
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T13:00:00Z",
+            "status": "success",
+            "result": {"summary": "Later record"}
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        enrichment
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["summary"] == "Later record"
+
+
+# ---------------------------------------------------------
+# TEST 16: DIFFERENT DATES MUST NOT MATCH
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_same_day_only(
+    sample_trend_data
+):
+    """Test that enrichment from another date is ignored."""
+
+    enrichment = pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-02T12:00:00Z",
+            "status": "success",
+            "result": {"summary": "Different day"}
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        enrichment
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["enrichment_status"] == (
+        "No enrichment records available"
+    )
+
+    assert pd.isna(london["summary"])
+
+
+# ---------------------------------------------------------
+# TEST 17: INVALID TIMESTAMPS ARE IGNORED
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_invalid_timestamps(
+    sample_trend_data
+):
+    """Test that invalid enrichment timestamps are ignored."""
+
+    enrichment = pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "invalid_timestamp",
+            "status": "success",
+            "result": {"summary": "Invalid timestamp"}
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        enrichment
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["enrichment_status"] == (
+        "No enrichment records available"
+    )
+
+
+# ---------------------------------------------------------
+# TEST 18: ORIGINAL DATAFRAMES REMAIN UNCHANGED
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_does_not_modify_original(
+    sample_trend_data,
+    sample_enrichment_data
+):
+    """Test that the matching function preserves input DataFrames."""
+
+    original_trend = sample_trend_data.copy(deep=True)
+    original_enrichment = sample_enrichment_data.copy(deep=True)
+
+    dashboard.match_daily_enrichment(
+        sample_trend_data,
+        sample_enrichment_data
+    )
+
+    pd.testing.assert_frame_equal(
+        sample_trend_data,
+        original_trend
+    )
+
+    pd.testing.assert_frame_equal(
+        sample_enrichment_data,
+        original_enrichment
+    )
+
+
+
+# ---------------------------------------------------------
+# TEST 19: INVALID ENRICHMENT RESULT
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_invalid_result(
+    sample_trend_data
+):
+    """Test handling of enrichment records with invalid results."""
+
+    enrichment = pd.DataFrame([
+        {
+            "latitude": 51.5074,
+            "longitude": -0.1278,
+            "timestamp": "2026-11-01T12:00:00Z",
+            "status": "success",
+            "result": None
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        enrichment
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["enrichment_status"] == (
+        "Enrichment record found, but result is invalid"
+    )
+
+    assert pd.isna(london["summary"])
+
+
+# ---------------------------------------------------------
+# TEST 20: DIFFERENT COORDINATES MUST NOT MATCH
+# ---------------------------------------------------------
+
+def test_match_daily_enrichment_different_coordinates(
+    sample_trend_data
+):
+    """Test that records from another location are not matched."""
+
+    enrichment = pd.DataFrame([
+        {
+            "latitude": 51.5000,
+            "longitude": -0.1000,
+            "timestamp": "2026-11-01T12:00:00Z",
+            "status": "success",
+            "result": {
+                "summary": "Different location"
+            }
+        }
+    ])
+
+    result = dashboard.match_daily_enrichment(
+        sample_trend_data,
+        enrichment
+    )
+
+    london = result[result["city"] == "London"].iloc[0]
+
+    assert london["enrichment_status"] == (
+        "No enrichment records available"
+    )
+
+    assert pd.isna(london["summary"])

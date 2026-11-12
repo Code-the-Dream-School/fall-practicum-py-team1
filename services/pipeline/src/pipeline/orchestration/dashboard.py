@@ -1,3 +1,4 @@
+from sqlalchemy import event
 import streamlit as st
 from dotenv import load_dotenv
 from supabase import create_client
@@ -7,7 +8,7 @@ import numpy as np
 import plotly.express as px
  
 
-
+@st.cache_data(ttl=1800)
 def get_gold_data():
 
     """Fetch gold data from Supabase."""
@@ -55,6 +56,242 @@ def get_gold_data():
         return pd.DataFrame()
 
     return pd.DataFrame(all_data)
+
+
+@st.cache_data(ttl=1800)
+def get_air_pollution_enrichment():
+
+    """Fetch enrichment data from Supabase."""
+    load_dotenv()
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY in .env")
+
+    client = create_client(supabase_url, supabase_key)
+
+    # Store all retrieved records here.
+    all_enriched_data = []
+
+    # Supabase range uses zero-based, inclusive indexes.
+    batch_size = 1000
+    start = 0
+
+    while True:
+
+        response = (
+            client.table("air_pollution_enrichment")
+            .select("*")
+            .range(start, start + batch_size - 1)
+            .execute()
+        )
+
+        batch = response.data or []
+
+        # Add the current batch to the complete dataset.
+        all_enriched_data.extend(batch)
+
+        # Stop when the returned batch contains fewer records
+        # than the requested batch size.
+        if len(batch) < batch_size:
+            break
+
+        # Move to the next batch.
+        start += batch_size
+
+    if not all_enriched_data:
+        st.warning("No data found in the enrichment table.")
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_enriched_data)
+
+enrichment_data = get_air_pollution_enrichment()
+
+print(enrichment_data.columns.tolist())
+print(enrichment_data.head(3).to_string())
+
+
+
+@st.cache_data(ttl=1800)
+def match_daily_enrichment(trend, enrichment_data):
+    """
+    Match one successful LLM enrichment record
+    to each daily AQI point.
+
+    Selection priority:
+    1. Closest timestamp to 12 PM UTC.
+    2. Prefer later timestamp when equally close.
+    3. Same-day records only.
+
+    If no enrichment exists for a city on a given day,
+    display 'No enrichment records available'.
+    """
+
+    trend = trend.copy()
+    enrichment_data = enrichment_data.copy()
+
+    # -------------------------------------------------
+    # 1. NORMALIZE TREND DATA
+    # -------------------------------------------------
+
+    trend["timestamp"] = pd.to_datetime(
+        trend["timestamp"],
+        errors="coerce",
+        utc=True
+    )
+    trend = trend.dropna(subset=["timestamp"]).copy()
+
+    for column in ["latitude", "longitude"]:
+        trend[column] = pd.to_numeric(
+            trend[column],
+            errors="coerce"
+        )
+
+    # -------------------------------------------------
+    # 2. NORMALIZE ENRICHMENT DATA
+    # -------------------------------------------------
+
+    enrichment_data["timestamp"] = pd.to_datetime(
+        enrichment_data["timestamp"],
+        errors="coerce",
+        utc=True
+    )
+
+    for column in ["latitude", "longitude"]:
+        enrichment_data[column] = pd.to_numeric(
+            enrichment_data[column],
+            errors="coerce"
+        )
+
+    # -------------------------------------------------
+    # 3. KEEP SUCCESSFUL ENRICHMENT RECORDS
+    # -------------------------------------------------
+
+    enrichment_data = enrichment_data[
+        enrichment_data["status"] == "success"
+    ].copy()
+
+    enrichment_data = enrichment_data.dropna(
+        subset=[
+            "timestamp",
+            "latitude",
+            "longitude"
+        ]
+    )
+
+    # -------------------------------------------------
+    # 4. EXTRACT UTC DATES
+    # -------------------------------------------------
+
+    trend["date"] = trend["timestamp"].dt.date
+
+    enrichment_data["date"] = (
+        enrichment_data["timestamp"].dt.date
+    )
+
+    # -------------------------------------------------
+    # 5. INITIALIZE ENRICHMENT COLUMNS
+    # -------------------------------------------------
+
+    trend["summary"] = None
+    trend["recommendation"] = None
+    trend["pollutant_analysis"] = None
+
+    trend["enrichment_status"] = (
+        "No enrichment records available"
+    )
+
+    # -------------------------------------------------
+    # 6. MATCH EACH CITY AND DAY
+    # -------------------------------------------------
+
+    for index, row in trend.iterrows():
+
+        # Find successful records for the same city
+        # location and UTC calendar date.
+
+        candidates = enrichment_data[
+            (enrichment_data["latitude"] == row["latitude"]) &
+            (enrichment_data["longitude"] == row["longitude"]) &
+            (enrichment_data["date"] == row["date"])
+        ].copy()
+
+        # No enrichment records for this city and day.
+        if candidates.empty:
+            trend.at[index, "enrichment_status"] = (
+                "No enrichment records available"
+            )
+            continue
+
+        # -------------------------------------------------
+        # 7. FIND RECORD CLOSEST TO 12 PM UTC
+        # -------------------------------------------------
+
+        noon = pd.Timestamp(
+            str(row["date"]) + " 12:00:00",
+            tz="UTC"
+        )
+
+        candidates["time_difference"] = (
+            candidates["timestamp"] - noon
+        ).abs()
+
+        # Closest timestamp first.
+        # Later timestamp wins when equally close.
+
+        candidates = candidates.sort_values(
+            ["time_difference", "timestamp"],
+            ascending=[True, False]
+        )
+
+        # -------------------------------------------------
+        # 8. SELECT BEST MATCH
+        # -------------------------------------------------
+
+        selected = candidates.iloc[0]
+
+        result = selected["result"]
+
+        # Check that the result contains a dictionary.
+        if not isinstance(result, dict):
+
+            trend.at[index, "enrichment_status"] = (
+                "Enrichment record found, but result is invalid"
+            )
+
+            continue
+
+        # -------------------------------------------------
+        # 9. EXTRACT LLM-GENERATED INSIGHTS
+        # -------------------------------------------------
+
+        trend.at[index, "summary"] = (
+            result.get("summary")
+        )
+
+        trend.at[index, "recommendation"] = (
+            result.get("recommendation")
+        )
+
+        trend.at[index, "pollutant_analysis"] = (
+            result.get("pollutant_analysis")
+        )
+
+        trend.at[index, "enrichment_status"] = (
+            "Enrichment available"
+        )
+
+    # -------------------------------------------------
+    # 10. RETURN MATCHED DATA
+    # -------------------------------------------------
+
+    return trend
+
+
+
+
 
 # ---------------------------------------------------------
 # DATE FILTERING FUNCTION
@@ -340,6 +577,7 @@ def make_dashboard():
 
     st.divider()
 
+    
     # --------------------------------------------------------
     # 7. AQI TREND OVER TIME
     # --------------------------------------------------------
@@ -352,11 +590,39 @@ def make_dashboard():
     trend = (
         df.groupby([
             pd.Grouper(key="timestamp", freq="D"),
-            "city"
+            "city",
+            "latitude",
+            "longitude"
         ])["aqi"]
         .mean()
         .reset_index()
     )
+
+    # Match the correct same-day LLM enrichment
+    # to each daily AQI point.
+    trend = match_daily_enrichment(
+        trend,
+        enrichment_data
+    )
+
+    # Debugging information.
+    print("MATCHED TREND DATA:")
+    print(
+        trend[
+            [
+                "city",
+                "timestamp",
+                "aqi",
+                "enrichment_status",
+                "summary",
+                "recommendation",
+                "pollutant_analysis"
+            ]
+        ].head(20).to_string()
+    )
+
+    print("TREND COLUMNS:")
+    print(trend.columns.tolist())
 
     # Create an interactive line chart.
     # Each city is represented by a different colored line.
@@ -367,15 +633,110 @@ def make_dashboard():
         color="city",
         markers=True,
         title="Daily Average AQI by City",
+        custom_data=[
+            "enrichment_status",
+            "summary",
+            "recommendation",
+            "pollutant_analysis"
+        ],
         labels={
             "timestamp": "Date",
             "aqi": "Average AQI",
             "city": "City"
+        },
+        hover_data={
+            "enrichment_status": False,
+            "summary": False,
+            "recommendation": False,
+            "pollutant_analysis": False
         }
     )
 
-    # Display the AQI trend chart.
-    st.plotly_chart(fig, use_container_width=True)
+    # Configure the chart hover information.
+    fig.update_traces(
+        hovertemplate=(
+            "<b>%{fullData.name}</b><br>"
+            "Date: %{x|%Y-%m-%d}<br>"
+            "AQI: %{y:.2f}<br>"
+            "Enrichment Status: %{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+
+    # Display the chart and capture click selections.
+    event = st.plotly_chart(
+        fig,
+        width="stretch",
+        on_select="rerun",
+        selection_mode="points",
+        key="aqi_trend_chart"
+    )
+
+    # --------------------------------------------------------
+    # DISPLAY FULL ENRICHMENT WHEN A CHART POINT IS CLICKED
+    # --------------------------------------------------------
+
+    if event and event.selection and event.selection.points:
+
+        selected_point = event.selection.points[0]
+
+        # Get the selected point's city and date.
+        selected_city = selected_point["curve_number"]
+        selected_timestamp = selected_point["x"]
+
+        # Identify the selected city from the chart trace.
+        city_name = fig.data[selected_city].name
+
+        # Find the corresponding row using city and timestamp.
+        selected_rows = trend[
+            (trend["city"] == city_name) &
+            (
+                trend["timestamp"] ==
+                pd.to_datetime(selected_timestamp, utc=True)
+            )
+        ]
+
+        if not selected_rows.empty:
+
+            selected_row = selected_rows.iloc[0]
+
+            st.divider()
+            st.subheader("🤖 Daily AI Enrichment Details")
+
+            st.write(f"**City:** {selected_row['city']}")
+
+            st.write(
+                f"**Date:** "
+                f"{selected_row['timestamp'].strftime('%Y-%m-%d')}"
+            )
+
+            st.write(f"**AQI:** {selected_row['aqi']:.2f}")
+
+            st.write(
+                f"**Status:** {selected_row['enrichment_status']}"
+            )
+
+            if selected_row["enrichment_status"] == "Enrichment available":
+
+                st.markdown("### Summary")
+                st.write(selected_row["summary"])
+
+                st.markdown("### Recommendation")
+                st.write(selected_row["recommendation"])
+
+                st.markdown("### Pollutant Analysis")
+                st.write(selected_row["pollutant_analysis"])
+
+            else:
+                st.info(
+                    "No enrichment records available "
+                    "for this city and date."
+                )
+
+    else:
+        st.caption(
+            "Click a point on the AQI chart to view its full AI enrichment."
+        )
 
     
 
@@ -417,7 +778,7 @@ def make_dashboard():
             }
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col2:
 
@@ -434,14 +795,14 @@ def make_dashboard():
             }
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # Display the numerical city comparison table.
     st.subheader("City Comparison Summary")
 
     st.dataframe(
         city_comparison.round(2),
-        use_container_width=True,
+        width="stretch" ,
         hide_index=True
     )
 
@@ -471,10 +832,10 @@ def make_dashboard():
         values="Records",
         hole=0.4,
         title="Distribution of Air Quality Categories"
-    )
+    )       
 
     # Display the category distribution chart.
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.divider()
 
@@ -523,7 +884,7 @@ def make_dashboard():
     )
 
     # Display the pollutant comparison chart.
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.divider()
 
@@ -548,7 +909,7 @@ def make_dashboard():
     # Display daily AQI statistics in a table.
     st.dataframe(
         daily_stats.round(2),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -593,7 +954,7 @@ def make_dashboard():
             "timestamp",
             ascending=False
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -616,6 +977,8 @@ def main() -> None:
 
     make_dashboard()
 
+print("Matching function loaded successfully:",
+      callable(match_daily_enrichment))
 
 if __name__ == "__main__":
     main()
