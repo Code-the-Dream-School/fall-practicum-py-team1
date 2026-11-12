@@ -107,10 +107,10 @@ def get_air_pollution_enrichment():
 
     return pd.DataFrame(all_enriched_data)
 
-enrichment_data = get_air_pollution_enrichment()
+ #enrichment_data = get_air_pollution_enrichment()
 
-print(enrichment_data.columns.tolist())
-print(enrichment_data.head(3).to_string())
+#print(enrichment_data.columns.tolist())
+#print(enrichment_data.head(3).to_string())
 
 
 
@@ -411,7 +411,16 @@ def make_dashboard():
     if gold_data is None or gold_data.empty:
         st.info("No air pollution data available yet.")
         return
+    # Fetch enrichment data from Supabase
+    try:
+        with st.spinner("Loading AI enrichment data..."):
+            enrichment_data = get_air_pollution_enrichment()
 
+    except Exception as e:
+        st.error("Failed to retrieve enrichment data from Supabase.")
+        st.error(str(e))
+        return
+    
     # Create a copy so that dashboard transformations
     # do not modify the original retrieved DataFrame.
     df = gold_data.copy()
@@ -606,23 +615,11 @@ def make_dashboard():
     )
 
     # Debugging information.
-    print("MATCHED TREND DATA:")
-    print(
-        trend[
-            [
-                "city",
-                "timestamp",
-                "aqi",
-                "enrichment_status",
-                "summary",
-                "recommendation",
-                "pollutant_analysis"
-            ]
-        ].head(20).to_string()
-    )
+    # print("MATCHED TREND DATA:")
+    # print(trend[["city","timestamp","aqi","enrichment_status","summary","recommendation","pollutant_analysis"]].head(20).to_string())
 
-    print("TREND COLUMNS:")
-    print(trend.columns.tolist())
+    # print("TREND COLUMNS:")
+    # print(trend.columns.tolist())
 
     # Create an interactive line chart.
     # Each city is represented by a different colored line.
