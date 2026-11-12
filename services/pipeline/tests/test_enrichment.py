@@ -1,8 +1,14 @@
 from unittest.mock import MagicMock
 
+import httpx
+from openai import AuthenticationError, PermissionDeniedError
+
 import pytest
 
-from pipeline.enrichment.client import EnrichmentConfigurationError
+from pipeline.enrichment.client import (
+    AirQualityEnricher,
+    EnrichmentConfigurationError,
+)
 from pipeline.enrichment.service import run_enrichment
 
 
@@ -356,3 +362,87 @@ def test_configuration_error_stops_batch(
     saved_records = database.tables["air_pollution_enrichment"]
     assert len(saved_records) == 1
     assert saved_records[0]["status"] == "pending"
+
+def test_missing_openai_api_key_raises_configuration_error(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(
+        EnrichmentConfigurationError,
+        match="OPENAI_API_KEY must be configured",
+    ):
+        AirQualityEnricher()
+
+def test_authentication_error_raises_configuration_error(gold_record):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = AuthenticationError(
+        "Invalid API key",
+        response=httpx.Response(401, request=httpx.Request("POST", "https://api.openai.com")),
+        body=None,
+    )
+
+    enricher = AirQualityEnricher(client=mock_client)
+
+    with pytest.raises(
+        EnrichmentConfigurationError,
+        match="OpenAI authentication or permission error",
+    ):
+        enricher.enrich(gold_record)
+
+def test_permission_denied_error_raises_configuration_error(gold_record):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = PermissionDeniedError(
+        "Permission denied",
+        response=httpx.Response(
+            403,
+            request=httpx.Request("POST", "https://api.openai.com"),
+        ),
+        body=None,
+    )
+
+    enricher = AirQualityEnricher(client=mock_client)
+
+    with pytest.raises(
+        EnrichmentConfigurationError,
+        match="OpenAI authentication or permission error",
+    ):
+        enricher.enrich(gold_record)
+
+def test_invalid_json_response_raises_value_error(gold_record):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value.choices[
+        0
+    ].message.content = "{invalid json"
+
+    enricher = AirQualityEnricher(client=mock_client)
+
+    with pytest.raises(ValueError, match="OpenAI returned invalid JSON"):
+        enricher.enrich(gold_record)
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # Missing required field
+        '{"summary": "OK", "pollutant_analysis": "OK"}',
+        # Unexpected extra field
+        '{"summary": "OK", "pollutant_analysis": "OK", '
+        '"recommendation": "OK", "extra": "unexpected"}',
+        # Empty required field
+        '{"summary": "", "pollutant_analysis": "OK", '
+        '"recommendation": "OK"}',
+        # Required field has the wrong type
+        '{"summary": "OK", "pollutant_analysis": null, '
+        '"recommendation": "OK"}',
+    ],
+)
+def test_invalid_required_response_fields_raise_value_error(
+    gold_record, content
+):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value.choices[
+        0
+    ].message.content = content
+
+    enricher = AirQualityEnricher(client=mock_client)
+
+    with pytest.raises(ValueError):
+        enricher.enrich(gold_record)
