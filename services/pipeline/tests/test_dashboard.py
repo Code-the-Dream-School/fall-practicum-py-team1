@@ -74,7 +74,7 @@ def sample_gold_data():
         {
             "city": "London",
             "timestamp": "2026-11-01T10:00:00Z",
-            "aqi": 45,
+            "aqi": 2,
             "category": "Good",
             "co": 200,
             "no": 5,
@@ -93,7 +93,7 @@ def sample_gold_data():
         {
             "city": "Paris",
             "timestamp": "2026-11-02T10:00:00Z",
-            "aqi": 60,
+            "aqi": 3,
             "category": "Moderate",
             "co": 250,
             "no": 7,
@@ -200,7 +200,20 @@ def test_get_gold_data(monkeypatch, sample_gold_data):
     assert "pollution_score" in result.columns
     assert "pm2_5" in result.columns
 
-    assert result["aqi"].tolist() == [45, 60]
+    assert result["aqi"].tolist() == [2, 3]
+
+#---------------------------------------------------------------
+
+def test_gold_data_aqi_values_within_valid_range(
+    sample_gold_data
+):
+    """Test that all AQI values are between 1 and 5."""
+
+    df = pd.DataFrame(sample_gold_data)
+
+    assert df["aqi"].between(1, 5).all()
+
+#---------------------------------------------------------
 
 
 # ---------------------------------------------------------
@@ -246,17 +259,17 @@ def test_get_gold_data_pagination(monkeypatch):
     # ARRANGE
 
     batch1 = [
-        {"city": "London", "aqi": i}
+        {"city": "London", "aqi": (i % 5) + 1}
         for i in range(1000)
     ]
 
     batch2 = [
-        {"city": "Paris", "aqi": i}
+        {"city": "Paris", "aqi": (i % 5) + 1}
         for i in range(1000)
     ]
 
     batch3 = [
-        {"city": "Berlin", "aqi": i}
+        {"city": "Berlin", "aqi": (i % 5) + 1}
         for i in range(500)
     ]
 
@@ -332,7 +345,7 @@ def test_date_filtering(sample_gold_data):
     # ASSERT
     assert len(result) == 1
     assert result["city"].tolist() == ["London"]
-    assert result["aqi"].tolist() == [45]
+    assert result["aqi"].tolist() == [2]
 
 
 # ---------------------------------------------------------
@@ -386,7 +399,7 @@ def test_date_filtering_includes_boundary_dates(sample_gold_data):
         "Paris"
     ]
 
-    assert result["aqi"].tolist() == [45, 60]
+    assert result["aqi"].tolist() == [2, 3]
 
 
 
@@ -405,8 +418,8 @@ def test_calculate_dashboard_metrics(sample_gold_data):
     result = dashboard.calculate_dashboard_metrics(df)
 
     # ASSERT
-    assert result["average_aqi"] == 52.5
-    assert result["maximum_aqi"] == 60
+    assert result["average_aqi"] == 2.5
+    assert result["maximum_aqi"] == 3
 
     assert result["average_pm25"] == 12.5
     assert result["average_pm10"] == 22.5
@@ -434,8 +447,8 @@ def test_dashboard_metrics_single_city(sample_gold_data):
     result = dashboard.calculate_dashboard_metrics(df)
 
     # ASSERT
-    assert result["average_aqi"] == 45
-    assert result["maximum_aqi"] == 45
+    assert result["average_aqi"] == 2
+    assert result["maximum_aqi"] == 2
     assert result["total_records"] == 1
     assert result["monitored_cities"] == 1
 
@@ -457,7 +470,7 @@ def test_dashboard_metrics_missing_values(sample_gold_data):
     result = dashboard.calculate_dashboard_metrics(df)
 
     # ASSERT
-    assert result["average_aqi"] == 60
+    assert result["average_aqi"] == 3
     assert result["average_pm25"] == 10
     assert result["total_records"] == 2
     assert result["monitored_cities"] == 2
@@ -490,8 +503,8 @@ def test_dashboard_metrics_invalid_values(sample_gold_data):
     result = dashboard.calculate_dashboard_metrics(df)
 
     # ASSERT
-    assert result["average_aqi"] == 60
-    assert result["maximum_aqi"] == 60
+    assert result["average_aqi"] == 3
+    assert result["maximum_aqi"] == 3
 
 
 # ---------------------------------------------------------
@@ -545,21 +558,21 @@ def sample_trend_data():
             "latitude": 51.5074,
             "longitude": -0.1278,
             "timestamp": "2026-11-01T00:00:00Z",
-            "aqi": 45
+            "aqi": 2
         },
         {
             "city": "Paris",
             "latitude": 48.8566,
             "longitude": 2.3522,
             "timestamp": "2026-11-02T00:00:00Z",
-            "aqi": 60
+            "aqi": 3
         },
         {
             "city": "New York",
             "latitude": 40.7128,
             "longitude": -74.0060,
             "timestamp": "2026-11-01T00:00:00Z",
-            "aqi": 55
+            "aqi": 2
         }
     ])
 
