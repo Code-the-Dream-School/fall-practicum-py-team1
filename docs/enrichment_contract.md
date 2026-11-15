@@ -155,21 +155,55 @@ Neither value may be empty or contain only whitespace.
 
 The enrichment process must handle unusable model responses and API errors without stopping the entire batch.
 
-| Situation                                       | Expected behavior                                 |
-| ----------------------------------------------- | ------------------------------------------------- |
-| Valid JSON with both required non-empty strings | Save enrichment with success status.              |
-| Empty response                                  | Reject and record failure.                        |
-| Invalid JSON                                    | Reject and record validation error.               |
-| Missing or unexpected fields                    | Reject and record validation error.               |
-| Incorrect field types                           | Reject and record validation error.               |
-| Empty required strings                          | Reject and record validation error.               |
-| Temporary API error or timeout                  | Retry according to the configured retry policy.   |
-| Permanent API or validation error               | Record failure and continue with the next record. |
+| Situation                                              | Expected behavior                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Valid JSON with both required non-empty strings        | Save enrichment with success status.                                                 |
+| Empty response                                         | Reject and record failure.                                                           |
+| Invalid JSON                                           | Reject and record validation error.                                                  |
+| Missing or unexpected fields                           | Reject and record validation error.                                                  |
+| Incorrect field types                                  | Reject and record validation error.                                                  |
+| Empty required strings                                 | Reject and record validation error.                                                  |
+| Temporary API error or timeout                         | Retry according to the configured retry policy.                                      |
+| Permanent API or validation error                      | Record failure and continue with the next record.                                    |
+| Five consecutive record failures                       | Stop the enrichment pipeline after recording the fifth failure.                      |
+| Configuration error (e.g., missing or invalid API key) | Stop the pipeline immediately without waiting for the consecutive-failure threshold. |
+
+### 8.1 Individual Record Failures
+
+For each individual record that fails due to an API or validation error:
+Set status = "failed" in air_pollution_enrichment.
+Store a descriptive error message in the error_message field.
+Continue processing the next record.
+
+### 8.2 Consecutive Failure Threshold
+
+The enrichment process must maintain a counter of consecutive record failures.
+Increment the counter after each failed record.
+Stop the enrichment pipeline after 5 consecutive failures.
+Reset the counter to zero after each successful enrichment.
+Record the pipeline-level failure and its reason in pipeline_runs.error_message.
+The fifth failed record must be saved with its failure status and error message before the pipeline stops.
+
+### 8.3 Configuration Errors
+
+Configuration errors must cause an immediate pipeline failure. Examples include:
+Missing API key.
+Invalid API key.
+Missing or invalid required configuration.
+These errors must not wait for the consecutive-failure threshold. Record the pipeline-level error in pipeline_runs.error_message and stop processing.
+
+### 8.4 Retry and Subsequent Pipeline Runs
 
 Only records with status = "success" count as successfully enriched and are skipped during subsequent pipeline runs.
 Records with status = "failed" do not count as completed enrichment and remain eligible for retry during a subsequent pipeline run.
 When a failed record is retried, the application must ensure that a successful result can be stored without creating duplicate successful enrichment records for the same observation and prompt version.
 Failed attempts must never be treated as successful enrichment results.
+
+### 8.5 Error Recording
+
+Record individual enrichment failures in air_pollution_enrichment, including status = "failed" and a descriptive error_message.
+Record pipeline-level failures in pipeline_runs.error_message, including configuration errors and termination after five consecutive record failures.
+Error messages must not expose API keys or other secrets.
 
 9. Enrichment Storage and Idempotency
 

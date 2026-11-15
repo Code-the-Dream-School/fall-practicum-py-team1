@@ -65,7 +65,7 @@ Columns
 | dt        | BIGINT           | Yes       | Observation timestamp as Unix epoch seconds. |
 | latitude  | DOUBLE PRECISION | Yes       | Observation latitude.                        |
 | longitude | DOUBLE PRECISION | Yes       | Observation longitude.                       |
-| aqi       | SMALLINT         | No        | Air Quality Index value returned by the API. |
+| aqi       | DOUBLE PRECISION | No        | Air Quality Index value returned by the API. |
 | co        | NUMERIC          | No        | Carbon monoxide measurement.                 |
 | no        | NUMERIC          | No        | Nitrogen monoxide measurement.               |
 | no2       | NUMERIC          | No        | Nitrogen dioxide measurement.                |
@@ -102,32 +102,32 @@ The table includes pollutant measurements, AQI information, time-based attribute
 
 Columns
 
-| Column          | PostgreSQL type  | Required? | Description                                       |
-| --------------- | ---------------- | --------- | ------------------------------------------------- |
-| city            | TEXT             | Yes       | City associated with the observation.             |
-| latitude        | DOUBLE PRECISION | Yes       | Geographic latitude.                              |
-| longitude       | DOUBLE PRECISION | Yes       | Geographic longitude.                             |
-| timestamp       | TIMESTAMPTZ      | Yes       | Observation timestamp.                            |
-| transformed_at  | TIMESTAMPTZ      | Yes       | Timestamp when the record was transformed.        |
-| aqi             | INTEGER          | No        | Air Quality Index value.                          |
-| co              | DOUBLE PRECISION | No        | Carbon monoxide measurement.                      |
-| no              | DOUBLE PRECISION | No        | Nitrogen monoxide measurement.                    |
-| no2             | DOUBLE PRECISION | No        | Nitrogen dioxide measurement.                     |
-| o3              | DOUBLE PRECISION | No        | Ozone measurement.                                |
-| so2             | DOUBLE PRECISION | No        | Sulfur dioxide measurement.                       |
-| pm2_5           | DOUBLE PRECISION | No        | Fine particulate matter measurement.              |
-| pm10            | DOUBLE PRECISION | No        | Coarse particulate matter measurement.            |
-| nh3             | DOUBLE PRECISION | No        | Ammonia measurement.                              |
-| category        | TEXT             | No        | AQI category assigned during transformation.      |
-| time_of_day     | TEXT             | No        | Time-of-day classification.                       |
-| day_of_week     | TEXT             | No        | Day-of-week classification.                       |
-| month           | TEXT             | No        | Month classification.                             |
-| year            | INTEGER          | No        | Observation year.                                 |
-| aqi_rolling_avg | DOUBLE PRECISION | No        | Calculated rolling average of AQI.                |
-| daily_max       | INTEGER          | No        | Daily maximum AQI.                                |
-| daily_min       | INTEGER          | No        | Daily minimum AQI.                                |
-| daily_range     | INTEGER          | No        | Difference between daily maximum and minimum AQI. |
-| pollution_score | NUMERIC          | No        | Normalized air pollution indicator.               |
+| Column          | PostgreSQL type  | Required? | Description                                                                                                                                                |
+| --------------- | ---------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| city            | TEXT             | Yes       | City associated with the observation.                                                                                                                      |
+| latitude        | DOUBLE PRECISION | Yes       | Geographic latitude.                                                                                                                                       |
+| longitude       | DOUBLE PRECISION | Yes       | Geographic longitude.                                                                                                                                      |
+| timestamp       | TIMESTAMPTZ      | Yes       | Observation timestamp.                                                                                                                                     |
+| transformed_at  | TIMESTAMPTZ      | Yes       | Timestamp when the record was transformed.                                                                                                                 |
+| aqi             | INTEGER          | No        | Air Quality Index value.                                                                                                                                   |
+| co              | DOUBLE PRECISION | No        | Carbon monoxide measurement.                                                                                                                               |
+| no              | DOUBLE PRECISION | No        | Nitrogen monoxide measurement.                                                                                                                             |
+| no2             | DOUBLE PRECISION | No        | Nitrogen dioxide measurement.                                                                                                                              |
+| o3              | DOUBLE PRECISION | No        | Ozone measurement.                                                                                                                                         |
+| so2             | DOUBLE PRECISION | No        | Sulfur dioxide measurement.                                                                                                                                |
+| pm2_5           | DOUBLE PRECISION | No        | Fine particulate matter measurement.                                                                                                                       |
+| pm10            | DOUBLE PRECISION | No        | Coarse particulate matter measurement.                                                                                                                     |
+| nh3             | DOUBLE PRECISION | No        | Ammonia measurement.                                                                                                                                       |
+| category        | TEXT             | No        | AQI category assigned during transformation.                                                                                                               |
+| time_of_day     | TEXT             | No        | Time-of-day classification.                                                                                                                                |
+| day_of_week     | TEXT             | No        | Day-of-week classification.                                                                                                                                |
+| month           | TEXT             | No        | Month classification.                                                                                                                                      |
+| year            | INTEGER          | No        | Observation year.                                                                                                                                          |
+| aqi_rolling_avg | DOUBLE PRECISION | No        | Calculated rolling average of AQI.                                                                                                                         |
+| daily_max       | INTEGER          | No        | Daily maximum AQI.                                                                                                                                         |
+| daily_min       | INTEGER          | No        | Daily minimum AQI.                                                                                                                                         |
+| daily_range     | INTEGER          | No        | Difference between daily maximum and minimum AQI.                                                                                                          |
+| pollution_score | NUMERIC          | No        | Normalized air pollution indicator. Normalized air pollution indicator, converting AQI values from 1–5 to a score from 0–100 using ((AQI - 1) / 4) \* 100. |
 
 Keys and constraints
 Primary key: None explicitly defined.
