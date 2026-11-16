@@ -327,6 +327,208 @@ def calculate_dashboard_metrics(df):
     }
 
 
+#-----------------------------------------------------------------
+# Dashboard polish and extra charts
+#------------------------------------------------------------------
+
+
+def display_monthly_aqi_trend(df):
+    """
+    Display monthly average AQI trends for all cities
+    across the entire available dataset.
+
+    Uses a copy of the original DataFrame so that
+    existing dashboard data and filters are unaffected.
+    """
+
+    # -------------------------------------------------
+    # 1. COPY THE ENTIRE DATASET
+    # -------------------------------------------------
+
+    monthly_df = df.copy()
+
+    # -------------------------------------------------
+    # 2. PREPROCESS DATA
+    # -------------------------------------------------
+
+    monthly_df["timestamp"] = pd.to_datetime(
+        monthly_df["timestamp"],
+        errors="coerce",
+        utc=True
+    )
+
+    monthly_df["aqi"] = pd.to_numeric(
+        monthly_df["aqi"],
+        errors="coerce"
+    )
+
+    monthly_df = monthly_df.dropna(
+        subset=["timestamp", "aqi", "city"]
+    )
+
+    if monthly_df.empty:
+        st.warning("No valid AQI records available for monthly analysis.")
+        return
+
+    # -------------------------------------------------
+    # 3. GROUP DATA BY MONTH AND CITY
+    # -------------------------------------------------
+
+    monthly_trend = (
+        monthly_df.groupby([
+            pd.Grouper(key="timestamp", freq="MS"),
+            "city"
+        ])["aqi"]
+        .mean()
+        .reset_index()
+    )
+
+    # -------------------------------------------------
+    # 4. DISPLAY MONTHLY AQI TREND
+    # -------------------------------------------------
+
+    st.subheader("📈 Monthly Average AQI Trend")
+
+    fig = px.line(
+        monthly_trend,
+        x="timestamp",
+        y="aqi",
+        color="city",
+        markers=True,
+        title="Monthly Average AQI by City",
+        labels={
+            "timestamp": "Month",
+            "aqi": "Monthly Average AQI",
+            "city": "City"
+        }
+    )
+
+    fig.update_xaxes(
+        tickformat="%b %Y",
+        title="Month"
+    )
+
+    fig.update_yaxes(
+        title="Average AQI"
+    )
+
+    fig.update_layout(
+        hovermode="x unified",
+        legend_title="City"
+    )
+
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
+
+
+def display_monthly_aqi_heatmap(df):
+    """
+    Display a heatmap showing monthly average AQI
+    across all monitored cities.
+
+    Uses the complete dataset without modifying
+    the original DataFrame or dashboard filters.
+    """
+
+    # -------------------------------------------------
+    # 1. COPY THE COMPLETE DATASET
+    # -------------------------------------------------
+
+    heatmap_df = df.copy()
+
+    # -------------------------------------------------
+    # 2. DATA PREPROCESSING
+    # -------------------------------------------------
+
+    heatmap_df["timestamp"] = pd.to_datetime(
+        heatmap_df["timestamp"],
+        errors="coerce",
+        utc=True
+    )
+
+    heatmap_df["aqi"] = pd.to_numeric(
+        heatmap_df["aqi"],
+        errors="coerce"
+    )
+
+    heatmap_df = heatmap_df.dropna(
+        subset=["timestamp", "aqi", "city"]
+    )
+
+    if heatmap_df.empty:
+        st.warning("No valid AQI records available for heatmap.")
+        return
+
+    # -------------------------------------------------
+    # 3. EXTRACT MONTH AND YEAR
+    # -------------------------------------------------
+
+    heatmap_df["month"] = (
+        heatmap_df["timestamp"].dt.strftime("%Y-%m")
+    )
+
+    # -------------------------------------------------
+    # 4. CALCULATE MONTHLY AVERAGE AQI BY CITY
+    # -------------------------------------------------
+
+    monthly_aqi = (
+        heatmap_df.groupby(["city", "month"])["aqi"]
+        .mean()
+        .reset_index()
+    )
+
+    # -------------------------------------------------
+    # 5. CONVERT DATA INTO HEATMAP FORMAT
+    # -------------------------------------------------
+
+    heatmap_data = monthly_aqi.pivot(
+        index="city",
+        columns="month",
+        values="aqi"
+    )
+
+    heatmap_data = heatmap_data.sort_index(axis=1)
+
+    # -------------------------------------------------
+    # 6. DISPLAY HEATMAP
+    # -------------------------------------------------
+
+    st.subheader("🌡️ Monthly AQI Heatmap")
+
+    fig = px.imshow(
+        heatmap_data,
+        labels={
+            "x": "Month",
+            "y": "City",
+            "color": "Average AQI"
+        },
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        color_continuous_scale=[
+            [0.0, "green"],
+            [0.25, "yellow"],
+            [0.50, "orange"],
+            [0.75, "red"],
+            [1.0, "purple"]
+        ],
+        aspect="auto",
+        text_auto=".1f",
+        title="Monthly Average AQI Across Cities"
+    )
+
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="City",
+        coloraxis_colorbar_title="Average AQI"
+    )
+
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
+
 
 def make_dashboard():
     """
@@ -592,7 +794,7 @@ def make_dashboard():
     # --------------------------------------------------------
 
     # This section shows how air quality changes over time.
-    st.subheader("📈 AQI Trend Over Time")
+    st.subheader("📈 Daily AQI Trend Over Time")
 
     # Group records by day and city.
     # Calculate the average AQI for each city on each day.
@@ -735,7 +937,22 @@ def make_dashboard():
             "Click a point on the AQI chart to view its full AI enrichment."
         )
 
+    # --------------------------------------------------------
+    # Dashboard polish and extra charts. MONTHLY AVERAGE AQI TREND
+    # --------------------------------------------------------
+
+    display_monthly_aqi_trend(gold_data)
+
+    st.divider()
     
+    # --------------------------------------------------------
+    # Dashboard polish and extra charts. MONTHLY AQI HEATMAP
+    # --------------------------------------------------------
+
+    display_monthly_aqi_heatmap(gold_data)
+
+    st.divider()
+
 
     # --------------------------------------------------------
     # 8. CITY COMPARISON
@@ -794,6 +1011,7 @@ def make_dashboard():
 
         st.plotly_chart(fig, width="stretch")
 
+
     # Display the numerical city comparison table.
     st.subheader("City Comparison Summary")
 
@@ -804,6 +1022,10 @@ def make_dashboard():
     )
 
     st.divider()
+
+
+
+
 
     # --------------------------------------------------------
     # 9. POLLUTION CATEGORY DISTRIBUTION
