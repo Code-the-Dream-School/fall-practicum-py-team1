@@ -89,6 +89,41 @@ def test_aqi_category(
     assert result[0]["aqi"] == aqi
 
 
+@pytest.mark.parametrize(
+    ("raw_aqi", "expected_aqi"),
+    [
+        (1.4, 1),
+        (1.5, 2),
+        (2.4, 2),
+        (2.5, 3),
+        (3.5, 4),
+        (4.8, 5),
+        (1.0000194311141968, 1),
+        (2.0000194311141968, 2),
+        (4.9999999, 5),
+    ],
+)
+def test_aqi_conventional_rounding(
+    raw_to_gold_module, location, raw_aqi, expected_aqi
+):
+    record = make_record(1798761600, raw_aqi, location)
+
+    result = raw_to_gold_module.transform([record], [location])
+
+    assert len(result) == 1
+    assert result[0]["aqi"] == expected_aqi
+    assert isinstance(result[0]["aqi"], int)
+
+
+def test_aqi_out_of_range_after_rounding_is_rejected(
+    raw_to_gold_module, location
+):
+    record = make_record(1798761600, 5.6, location)
+
+    result = raw_to_gold_module.transform([record], [location])
+
+    assert result == []
+
 def test_daily_statistics_and_rolling_average(
     raw_to_gold_module, location
 ):
