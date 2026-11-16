@@ -4,6 +4,7 @@ requests>=2.32
 pydantic>=2.7
 pydantic-settings>=2.3
 python-dotenv>=1.0
+openai>=1.0
 prefect>=3.0
 azure-storage-blob>=12.26
 duckdb>=1.0
