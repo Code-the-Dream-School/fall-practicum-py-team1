@@ -6,6 +6,7 @@ import pytest
 from pipeline.orchestration.backfill_incremental import (
     build_enrichment_key,
     iter_batches,
+    normalize_timestamp,
     select_records_for_enrichment,
     validate_mode_dates,
 )
@@ -29,6 +30,19 @@ def valid_record():
         "nh3": 0.01,
     }
 
+def test_normalize_timestamp_returns_utc_iso_format():
+    result = normalize_timestamp(
+        "2026-10-21T02:19:03Z"
+    )
+
+    assert result == "2026-10-21T02:19:03+00:00"
+
+def test_normalize_timestamp_converts_to_utc():
+    result = normalize_timestamp(
+        "2026-10-21T07:19:03+05:00"
+    )
+
+    assert result == "2026-10-21T02:19:03+00:00"
 
 def test_backfill_requires_both_dates():
     with pytest.raises(ValueError):
@@ -106,6 +120,20 @@ def test_new_prompt_version_allows_reenrichment(valid_record):
 
     assert selected == [valid_record]
 
+@pytest.mark.parametrize(
+    "invalid_prompt_version",
+    [None, "", "   "],
+)
+def test_prompt_version_must_be_non_empty(
+    valid_record,
+    invalid_prompt_version,
+):
+    with pytest.raises(ValueError, match="prompt_version"):
+        select_records_for_enrichment(
+            gold_records=[valid_record],
+            successful_keys=set(),
+            prompt_version=invalid_prompt_version,
+        )
 
 def test_model_is_not_part_of_enrichment_identity(valid_record):
     key_before = build_enrichment_key(

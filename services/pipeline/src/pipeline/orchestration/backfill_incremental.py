@@ -10,13 +10,14 @@ It does not call OpenAI or save enrichment results.
 """
 
 from datetime import date, datetime, time, timedelta, timezone
+from pipeline.enrichment.config import PROMPT_VERSION
 import math
 from typing import Any, Iterator
 
 GOLD_TABLE = "air_pollution_gold"
 ENRICHMENT_TABLE = "air_pollution_enrichment"
 
-DEFAULT_PROMPT_VERSION = "v1"
+DEFAULT_PROMPT_VERSION = PROMPT_VERSION
 DEFAULT_BATCH_SIZE = 100
 PAGE_SIZE = 1000
 
@@ -182,11 +183,7 @@ def normalize_timestamp(value: Any) -> str:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("Timestamp must include timezone information.")
 
-    return (
-        parsed.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
-    )
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 def build_enrichment_key(
@@ -334,6 +331,9 @@ def select_records_for_enrichment(
     so its Gold record remains eligible.
     """
 
+    if not isinstance(prompt_version, str) or not prompt_version.strip():
+        raise ValueError("prompt_version must be a non-empty string.")
+
     selected = []
 
     for record in gold_records:
@@ -374,6 +374,8 @@ def get_records_to_enrich(
 
     Returns eligible Gold records that need enrichment.
     """
+    if not isinstance(prompt_version, str) or not prompt_version.strip():
+        raise ValueError("prompt_version must be a non-empty string.")
 
     validate_mode_dates(mode, start_date, end_date)
 
