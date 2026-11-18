@@ -23,34 +23,36 @@ CREATE TABLE IF NOT EXISTS public.locations (
     CONSTRAINT locations_pkey PRIMARY KEY (city, latitude, longitude)
 );
 
-create table public.air_pollution_gold (
-  city text not null,
-  latitude double precision not null,
-  longitude double precision not null,
-  "timestamp" timestamp with time zone not null,
-  transformed_at timestamp with time zone not null,
-  aqi integer not null,
-  co double precision null,
-  no double precision null,
-  no2 double precision null,
-  o3 double precision null,
-  so2 double precision null,
-  pm2_5 double precision null,
-  pm10 double precision null,
-  nh3 double precision null,
-  category text null,
-  time_of_day text null,
-  day_of_week text null,
-  month text null,
-  year integer null,
-  aqi_rolling_avg double precision null,
-  daily_max integer null,
-  daily_min integer null,
-  daily_range integer null,
-  pollution_score numeric null
-) TABLESPACE pg_default;
+CREATE TABLE IF NOT EXISTS public.air_pollution_gold (
+    city TEXT NOT NULL,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    "timestamp" TIMESTAMPTZ NOT NULL,
+    transformed_at TIMESTAMPTZ NOT NULL,
+    aqi INTEGER NOT NULL,
+    co DOUBLE PRECISION,
+    no DOUBLE PRECISION,
+    no2 DOUBLE PRECISION,
+    o3 DOUBLE PRECISION,
+    so2 DOUBLE PRECISION,
+    pm2_5 DOUBLE PRECISION,
+    pm10 DOUBLE PRECISION,
+    nh3 DOUBLE PRECISION,
+    category TEXT,
+    time_of_day TEXT,
+    day_of_week TEXT,
+    month TEXT,
+    year INTEGER,
+    aqi_rolling_avg DOUBLE PRECISION,
+    daily_max INTEGER,
+    daily_min INTEGER,
+    daily_range INTEGER,
+    pollution_score NUMERIC
+);
 
-create unique INDEX IF not exists uq_air_pollution_gold_location_timestamp on public.air_pollution_gold using btree (latitude, longitude, "timestamp") TABLESPACE pg_default;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_air_pollution_gold_location_timestamp
+    ON public.air_pollution_gold (latitude, longitude, "timestamp");
+
 
 -- Pipeline run tracking and operational logs
 CREATE TABLE IF NOT EXISTS public.pipeline_runs (
@@ -79,4 +81,36 @@ CREATE TABLE IF NOT EXISTS public.pipeline_runs (
         CHECK (
             finished_at IS NULL OR finished_at >= started_at
         )
+);
+
+--  LLM enrichment results
+
+CREATE TABLE IF NOT EXISTS public.air_pollution_enrichment (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    "timestamp" TIMESTAMPTZ NOT NULL,
+
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+
+    result JSONB,
+
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT air_pollution_enrichment_status_check
+        CHECK (status IN ('pending', 'success', 'failed')),
+
+    CONSTRAINT air_pollution_enrichment_attempt_count_check
+        CHECK (attempt_count >= 0),
+
+    CONSTRAINT air_pollution_enrichment_unique_record
+        UNIQUE (latitude, longitude, "timestamp", prompt_version)
 );
