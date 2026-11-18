@@ -13,9 +13,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pipeline.enrichment.config import PROMPT_VERSION
 import math
 from typing import Any, Iterator
-
-GOLD_TABLE = "air_pollution_gold"
-ENRICHMENT_TABLE = "air_pollution_enrichment"
+from core.config import GOLD_TABLE, ENRICHMENT_TABLE
 
 DEFAULT_PROMPT_VERSION = PROMPT_VERSION
 DEFAULT_BATCH_SIZE = 100
