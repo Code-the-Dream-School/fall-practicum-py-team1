@@ -23,6 +23,7 @@ if PROJECT_ROOT is not None:
 RAW_TABLE = "air_pollution_raw"
 LOCATIONS_TABLE = "locations"
 GOLD_TABLE = "air_pollution_gold"
+ENRICHMENT_TABLE = "air_pollution_enrichment"
 
 RAW_COLUMNS = [
     "dt", "latitude", "longitude", "aqi",
