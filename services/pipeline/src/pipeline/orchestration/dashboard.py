@@ -1174,7 +1174,7 @@ def make_dashboard():
     "Carbon Monoxide CO": "co",
     "Sulfur Dioxide SO2": "so2",
     "Ammonia NH3": "nh3",
-    "Carbon Dioxide NO": "no"
+    "Nitric Oxide NO": "no"
     }
 
     # Keep only pollutant columns available in the dataset.
