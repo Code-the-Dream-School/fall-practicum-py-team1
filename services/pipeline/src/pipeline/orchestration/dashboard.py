@@ -327,6 +327,208 @@ def calculate_dashboard_metrics(df):
     }
 
 
+#-----------------------------------------------------------------
+# Dashboard polish and extra charts
+#------------------------------------------------------------------
+
+
+def display_monthly_aqi_trend(df):
+    """
+    Display monthly average AQI trends for all cities
+    across the entire available dataset.
+
+    Uses a copy of the original DataFrame so that
+    existing dashboard data and filters are unaffected.
+    """
+
+    # -------------------------------------------------
+    # 1. COPY THE ENTIRE DATASET
+    # -------------------------------------------------
+
+    monthly_df = df.copy()
+
+    # -------------------------------------------------
+    # 2. PREPROCESS DATA
+    # -------------------------------------------------
+
+    monthly_df["timestamp"] = pd.to_datetime(
+        monthly_df["timestamp"],
+        errors="coerce",
+        utc=True
+    )
+
+    monthly_df["aqi"] = pd.to_numeric(
+        monthly_df["aqi"],
+        errors="coerce"
+    )
+
+    monthly_df = monthly_df.dropna(
+        subset=["timestamp", "aqi", "city"]
+    )
+
+    if monthly_df.empty:
+        st.warning("No valid AQI records available for monthly analysis.")
+        return
+
+    # -------------------------------------------------
+    # 3. GROUP DATA BY MONTH AND CITY
+    # -------------------------------------------------
+
+    monthly_trend = (
+        monthly_df.groupby([
+            pd.Grouper(key="timestamp", freq="MS"),
+            "city"
+        ])["aqi"]
+        .mean()
+        .reset_index()
+    )
+
+    # -------------------------------------------------
+    # 4. DISPLAY MONTHLY AQI TREND
+    # -------------------------------------------------
+
+    st.subheader("📈 Monthly Average AQI Trend")
+
+    fig = px.line(
+        monthly_trend,
+        x="timestamp",
+        y="aqi",
+        color="city",
+        markers=True,
+        title="Monthly Average AQI by City",
+        labels={
+            "timestamp": "Month",
+            "aqi": "Monthly Average AQI",
+            "city": "City"
+        }
+    )
+
+    fig.update_xaxes(
+        tickformat="%b %Y",
+        title="Month"
+    )
+
+    fig.update_yaxes(
+        title="Average AQI"
+    )
+
+    fig.update_layout(
+        hovermode="x unified",
+        legend_title="City"
+    )
+
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
+
+
+def display_monthly_aqi_heatmap(df):
+    """
+    Display a heatmap showing monthly average AQI
+    across all monitored cities.
+
+    Uses the complete dataset without modifying
+    the original DataFrame or dashboard filters.
+    """
+
+    # -------------------------------------------------
+    # 1. COPY THE COMPLETE DATASET
+    # -------------------------------------------------
+
+    heatmap_df = df.copy()
+
+    # -------------------------------------------------
+    # 2. DATA PREPROCESSING
+    # -------------------------------------------------
+
+    heatmap_df["timestamp"] = pd.to_datetime(
+        heatmap_df["timestamp"],
+        errors="coerce",
+        utc=True
+    )
+
+    heatmap_df["aqi"] = pd.to_numeric(
+        heatmap_df["aqi"],
+        errors="coerce"
+    )
+
+    heatmap_df = heatmap_df.dropna(
+        subset=["timestamp", "aqi", "city"]
+    )
+
+    if heatmap_df.empty:
+        st.warning("No valid AQI records available for heatmap.")
+        return
+
+    # -------------------------------------------------
+    # 3. EXTRACT MONTH AND YEAR
+    # -------------------------------------------------
+
+    heatmap_df["month"] = (
+        heatmap_df["timestamp"].dt.strftime("%Y-%m")
+    )
+
+    # -------------------------------------------------
+    # 4. CALCULATE MONTHLY AVERAGE AQI BY CITY
+    # -------------------------------------------------
+
+    monthly_aqi = (
+        heatmap_df.groupby(["city", "month"])["aqi"]
+        .mean()
+        .reset_index()
+    )
+
+    # -------------------------------------------------
+    # 5. CONVERT DATA INTO HEATMAP FORMAT
+    # -------------------------------------------------
+
+    heatmap_data = monthly_aqi.pivot(
+        index="city",
+        columns="month",
+        values="aqi"
+    )
+
+    heatmap_data = heatmap_data.sort_index(axis=1)
+
+    # -------------------------------------------------
+    # 6. DISPLAY HEATMAP
+    # -------------------------------------------------
+
+    st.subheader("🌡️ Monthly AQI Heatmap")
+
+    fig = px.imshow(
+        heatmap_data,
+        labels={
+            "x": "Month",
+            "y": "City",
+            "color": "Average AQI"
+        },
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        color_continuous_scale=[
+            [0.0, "green"],
+            [0.25, "yellow"],
+            [0.50, "orange"],
+            [0.75, "red"],
+            [1.0, "purple"]
+        ],
+        aspect="auto",
+        text_auto=".1f",
+        title="Monthly Average AQI Across Cities"
+    )
+
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="City",
+        coloraxis_colorbar_title="Average AQI"
+    )
+
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
+
 
 def make_dashboard():
     """
@@ -508,15 +710,28 @@ def make_dashboard():
     # Display a date picker in the sidebar.
     # min_value and max_value prevent users from selecting dates
     # outside the available date range in the Gold database.
-    date_range = st.sidebar.date_input(
-        "Select Date Range",
-        value=(min_date, max_date),
+    start_date = st.sidebar.date_input(
+        "Select Start Date",
+        value=min_date,
         min_value=min_date,
-        max_value=max_date
+        max_value=max_date,
+        key="start_date"
     )
 
-    # Apply the selected date range to filter the dataset.
-    df = filter_by_date_range(df, date_range)
+    # Select the end date.
+    end_date = st.sidebar.date_input(
+        "Select End Date",
+        value=max_date,
+        min_value=start_date,
+        max_value=max_date,
+        key="end_date"
+    )
+
+    # Filter records using the selected start and end dates.
+    df = df[
+        (df["timestamp"].dt.date >= start_date) &
+        (df["timestamp"].dt.date <= end_date)
+    ]
 
     # Check whether records remain after filtering.
     if df.empty:
@@ -592,27 +807,59 @@ def make_dashboard():
     # --------------------------------------------------------
 
     # This section shows how air quality changes over time.
-    st.subheader("📈 AQI Trend Over Time")
-
     # Group records by day and city.
     # Calculate the average AQI for each city on each day.
+    # Determine aggregation frequency based on selected date range
+
+    # Calculate the selected date range.
+    selected_days = (end_date - start_date).days
+
+    # Automatically determine AQI aggregation frequency.
+    if selected_days <= 60:
+        aggregation_frequency = "D"
+        aggregation_label = "Daily"
+
+    elif selected_days <= 365:
+        aggregation_frequency = "W"
+        aggregation_label = "Weekly"
+
+    elif selected_days <= 1095:
+        aggregation_frequency = "MS"
+        aggregation_label = "Monthly"
+
+    else:
+        aggregation_frequency = "QS"
+        aggregation_label = "Quarterly"
+    
+
+
     trend = (
-        df.groupby([
-            pd.Grouper(key="timestamp", freq="D"),
-            "city",
-            "latitude",
-            "longitude"
-        ])["aqi"]
-        .mean()
-        .reset_index()
+    df.groupby([
+        pd.Grouper(
+            key="timestamp",
+            freq=aggregation_frequency
+        ),
+        "city",
+        "latitude",
+        "longitude"
+    ])["aqi"]
+    .mean()
+    .reset_index()
     )
+    st.subheader(f"📈 {aggregation_label} AQI Trend Over Time")
 
     # Match the correct same-day LLM enrichment
     # to each daily AQI point.
-    trend = match_daily_enrichment(
-        trend,
-        enrichment_data
-    )
+    if aggregation_frequency == "D":
+        trend = match_daily_enrichment(
+            trend,
+            enrichment_data
+        )
+    else:
+        trend["summary"] = None
+        trend["recommendation"] = None
+        trend["pollutant_analysis"] = None
+        trend["enrichment_status"] = "Aggregated period"
 
     # Debugging information.
     # print("MATCHED TREND DATA:")
@@ -629,7 +876,7 @@ def make_dashboard():
         y="aqi",
         color="city",
         markers=True,
-        title="Daily Average AQI by City",
+        title=f"{aggregation_label} Average AQI by City",
         custom_data=[
             "enrichment_status",
             "summary",
@@ -672,79 +919,92 @@ def make_dashboard():
     # --------------------------------------------------------
     # DISPLAY FULL ENRICHMENT WHEN A CHART POINT IS CLICKED
     # --------------------------------------------------------
+    if aggregation_frequency == "D":
+        if event and event.selection and event.selection.points:
 
-    if event and event.selection and event.selection.points:
+            selected_point = event.selection.points[0]
 
-        selected_point = event.selection.points[0]
+            # Get the selected point's city and date.
+            selected_city = selected_point["curve_number"]
+            selected_timestamp = selected_point["x"]
 
-        # Get the selected point's city and date.
-        selected_city = selected_point["curve_number"]
-        selected_timestamp = selected_point["x"]
+            # Identify the selected city from the chart trace.
+            city_name = fig.data[selected_city].name
 
-        # Identify the selected city from the chart trace.
-        city_name = fig.data[selected_city].name
+            # Find the corresponding row using city and timestamp.
+            selected_rows = trend[
+                (trend["city"] == city_name) &
+                (
+                    trend["timestamp"] ==
+                    pd.to_datetime(selected_timestamp, utc=True)
+                )
+            ]
 
-        # Find the corresponding row using city and timestamp.
-        selected_rows = trend[
-            (trend["city"] == city_name) &
-            (
-                trend["timestamp"] ==
-                pd.to_datetime(selected_timestamp, utc=True)
-            )
-        ]
+            if not selected_rows.empty:
 
-        if not selected_rows.empty:
+                selected_row = selected_rows.iloc[0]
 
-            selected_row = selected_rows.iloc[0]
+                st.divider()
+                st.subheader("🤖 Daily AI Enrichment Details")
 
-            st.divider()
-            st.subheader("🤖 Daily AI Enrichment Details")
+                st.write(f"**City:** {selected_row['city']}")
 
-            st.write(f"**City:** {selected_row['city']}")
-
-            st.write(
-                f"**Date:** "
-                f"{selected_row['timestamp'].strftime('%Y-%m-%d')}"
-            )
-
-            st.write(f"**AQI:** {selected_row['aqi']:.2f}")
-
-            st.write(
-                f"**Status:** {selected_row['enrichment_status']}"
-            )
-
-            if selected_row["enrichment_status"] == "Enrichment available":
-
-                st.markdown("### Summary")
-                st.write(selected_row["summary"])
-
-                st.markdown("### Recommendation")
-                st.write(selected_row["recommendation"])
-
-                st.markdown("### Pollutant Analysis")
-                st.write(selected_row["pollutant_analysis"])
-
-            else:
-                st.info(
-                    "No enrichment records available "
-                    "for this city and date."
+                st.write(
+                    f"**Date:** "
+                    f"{selected_row['timestamp'].strftime('%Y-%m-%d')}"
                 )
 
-    else:
-        st.caption(
-            "Click a point on the AQI chart to view its full AI enrichment."
-        )
+                st.write(f"**AQI:** {selected_row['aqi']:.2f}")
 
+                st.write(
+                    f"**Status:** {selected_row['enrichment_status']}"
+                )
+
+                if selected_row["enrichment_status"] == "Enrichment available":
+
+                    st.markdown("### Summary")
+                    st.write(selected_row["summary"])
+
+                    st.markdown("### Recommendation")
+                    st.write(selected_row["recommendation"])
+
+                    st.markdown("### Pollutant Analysis")
+                    st.write(selected_row["pollutant_analysis"])
+
+                else:
+                    st.info(
+                        "No enrichment records available "
+                        "for this city and date."
+                    )
+
+        else:
+            st.caption(
+                "Click a point on the AQI chart to view its full AI enrichment."
+            )
+
+    # --------------------------------------------------------
+    # Dashboard polish and extra charts. MONTHLY AVERAGE AQI TREND
+    # --------------------------------------------------------
+
+    # display_monthly_aqi_trend(gold_data)
+
+    # st.divider()
     
+    # --------------------------------------------------------
+    # Dashboard polish and extra charts. MONTHLY AQI HEATMAP
+    # --------------------------------------------------------
+
+    display_monthly_aqi_heatmap(gold_data)
+
+    st.divider()
+
 
     # --------------------------------------------------------
     # 8. CITY COMPARISON
     # --------------------------------------------------------
 
-    # Compare average pollution levels across different cities.
     st.subheader("🏙️ City Comparison")
 
-    # Group records by city and calculate average pollutant values.
     city_comparison = (
         df.groupby("city")
         .agg(
@@ -757,17 +1017,30 @@ def make_dashboard():
         .reset_index()
     )
 
-    # Create two columns for comparison charts.
+    # Keep both charts side by side
     col1, col2 = st.columns(2)
+
+    # --------------------------------------------------------
+    # LEFT CHART: AVERAGE AQI
+    # --------------------------------------------------------
 
     with col1:
 
-        # Compare average AQI between cities.
         fig = px.bar(
-            city_comparison,
-            x="city",
-            y="Average_AQI",
-            color="city",
+            city_comparison.sort_values(
+                "Average_AQI",
+                ascending=True
+            ),
+            x="Average_AQI",
+            y="city",
+            orientation="h",
+            color="Average_AQI",
+            text="Average_AQI",
+            color_continuous_scale=[
+                [0.0, "green"],
+                [0.5, "yellow"],
+                [1.0, "red"]
+            ],
             title="Average AQI by City",
             labels={
                 "city": "City",
@@ -775,16 +1048,44 @@ def make_dashboard():
             }
         )
 
+        fig.update_traces(
+            texttemplate="%{x:.2f}",
+            textposition="outside",
+            cliponaxis=False
+        )
+
+        fig.update_layout(
+            xaxis_title="Average AQI",
+            yaxis_title="City",
+            bargap=0.5,
+            coloraxis_showscale=False,
+            margin=dict(r=60)
+        )
+
         st.plotly_chart(fig, width="stretch")
+
+
+    # --------------------------------------------------------
+    # RIGHT CHART: AVERAGE POLLUTION SCORE
+    # --------------------------------------------------------
 
     with col2:
 
-        # Compare average pollution scores between cities.
         fig = px.bar(
-            city_comparison,
-            x="city",
-            y="Average_Pollution_Score",
-            color="city",
+            city_comparison.sort_values(
+                "Average_Pollution_Score",
+                ascending=True
+            ),
+            x="Average_Pollution_Score",
+            y="city",
+            orientation="h",
+            color="Average_Pollution_Score",
+            text="Average_Pollution_Score",
+            color_continuous_scale=[
+                [0.0, "green"],
+                [0.5, "yellow"],
+                [1.0, "red"]
+            ],
             title="Average Pollution Score by City",
             labels={
                 "city": "City",
@@ -792,18 +1093,39 @@ def make_dashboard():
             }
         )
 
+        fig.update_traces(
+            texttemplate="%{x:.2f}",
+            textposition="outside",
+            cliponaxis=False
+        )
+
+        fig.update_layout(
+            xaxis_title="Pollution Score",
+            yaxis_title="City",
+            bargap=0.5,
+            coloraxis_showscale=False,
+            margin=dict(r=60)
+        )
+
         st.plotly_chart(fig, width="stretch")
 
-    # Display the numerical city comparison table.
+
+    # --------------------------------------------------------
+    # CITY COMPARISON SUMMARY
+    # --------------------------------------------------------
+
     st.subheader("City Comparison Summary")
 
     st.dataframe(
         city_comparison.round(2),
-        width="stretch" ,
+        width="stretch",
         hide_index=True
     )
 
     st.divider()
+
+
+
 
     # --------------------------------------------------------
     # 9. POLLUTION CATEGORY DISTRIBUTION
@@ -844,46 +1166,79 @@ def make_dashboard():
     st.subheader("🧪 Pollutant Concentration Analysis")
 
     # Define pollutant columns available in the Gold Layer.
-    pollutants = [
-        "pm2_5",
-        "pm10",
-        "no2",
-        "o3",
-        "co",
-        "so2",
-        "nh3",
-        "no"
-    ]
+    pollutants = {
+    "Fine Particulate Matter PM2.5": "pm2_5",
+    "Coarse Particulate Matter PM10": "pm10",
+    "Nitrogen Dioxide NO2": "no2",
+    "Ozone O3": "o3",
+    "Carbon Monoxide CO": "co",
+    "Sulfur Dioxide SO2": "so2",
+    "Ammonia NH3": "nh3",
+    "Nitric Oxide NO": "no"
+    }
 
-    # Calculate average pollutant concentrations by city.
-    pollutant_comparison = (
-        df.groupby("city")[pollutants]
-        .mean()
-        .reset_index()
-    )
+    # Keep only pollutant columns available in the dataset.
+    available_pollutants = {
+        name: column
+        for name, column in pollutants.items()
+        if column in df.columns
+    }
 
-    # Convert the table into long format for visualization.
-    # This allows Plotly to display each pollutant separately.
-    pollutant_long = pollutant_comparison.melt(
-        id_vars="city",
-        var_name="Pollutant",
-        value_name="Average Concentration"
-    )
+    if not available_pollutants:
+        st.warning("No pollutant concentration data available.")
 
-    # Create a grouped bar chart comparing pollutants by city.
-    fig = px.bar(
-        pollutant_long,
-        x="Pollutant",
-        y="Average Concentration",
-        color="city",
-        barmode="group",
-        title="Average Pollutant Concentrations by City"
-    )
 
-    # Display the pollutant comparison chart.
-    st.plotly_chart(fig, width="stretch")
+    else:
+
+        # Allow users to select one pollutant.
+
+        selected_pollutant = st.selectbox(
+            "Select a pollutant",
+        options=list(available_pollutants.keys()),
+        key="pollutant_selector"
+        )
+
+        selected_column = available_pollutants[selected_pollutant]
+
+        # Calculate average concentration by city.
+        pollutant_data = (
+            df.groupby("city")[selected_column]
+            .mean()
+            .reset_index()
+        )
+
+        pollutant_data = pollutant_data.dropna(
+        subset=[selected_column]
+        )
+
+        # Create a chart for the selected pollutant only.
+        fig = px.bar(
+            pollutant_data,
+            x="city",
+            y=selected_column,
+            color="city",
+            title=f"Average {selected_pollutant} Concentration by City",
+            labels={
+                "city": "City",
+                selected_column: f"{selected_pollutant} Concentration"
+            }
+        )
+
+
+        
+        fig.update_layout(
+            xaxis_title="City",
+            yaxis_title=f"{selected_pollutant} Concentration"
+        )
+
+        st.plotly_chart(
+            fig,
+            width="stretch"
+        )
 
     st.divider()
+
+
 
     # --------------------------------------------------------
     # 11. DAILY AQI STATISTICS
